@@ -1,6 +1,5 @@
 # Global env
 .env
-.env.*
 
 # Logs
 *.log
