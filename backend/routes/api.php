@@ -1,8 +1,42 @@
 <?php
 
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\API\AuthController;
+use App\Http\Controllers\API\TransactionController;
+use App\Http\Controllers\API\CategoryController;
+use App\Http\Controllers\API\AchievementController;
+use App\Http\Controllers\API\DashboardController;
+use App\Http\Controllers\API\ExportController;
 
-Route::get('/user', function (Request $request) {
-    return $request->user();
-})->middleware('auth:sanctum');
+// Public routes
+Route::post('/register', [AuthController::class, 'register']);
+Route::post('/login', [AuthController::class, 'login']);
+
+// Protected routes
+Route::middleware('auth:sanctum')->group(function () {
+    // Auth
+    Route::post('/logout', [AuthController::class, 'logout']);
+    Route::get('/me', [AuthController::class, 'me']);
+    
+    // Transactions
+    Route::apiResource('transactions', TransactionController::class);
+    
+    // Categories
+    Route::get('/categories', [CategoryController::class, 'index']);
+    Route::post('/categories', [CategoryController::class, 'store']);
+    
+    // Dashboard
+    Route::get('/dashboard', [DashboardController::class, 'index']);
+    Route::get('/dashboard/chart', [DashboardController::class, 'chartData']);
+
+    // Export
+    Route::get('/export/csv', [ExportController::class, 'exportCSV']);
+    Route::get('/export/pdf', [ExportController::class, 'exportPDF']);
+    
+    // Achievements
+    Route::get('/achievements', [AchievementController::class, 'index']);
+    Route::get('/achievements/my', [AchievementController::class, 'myAchievements']);
+    
+    // Monthly Wrapped
+    Route::get('/wrapped/{year}/{month}', [DashboardController::class, 'monthlyWrapped']);
+});
