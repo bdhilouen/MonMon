@@ -3,22 +3,32 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
+use App\Models\Category;
 use App\Models\Transaction;
+use App\Services\AchievementService;
+use App\Services\CacheService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
 class TransactionController extends Controller
 {
+    protected $achievementService;
+
+    // Inject AchievementService via constructor.
+    public function __construct(AchievementService $achievementService)
+    {
+        $this->achievementService = $achievementService;
+    }
+
     public function index(Request $request)
     {
         $transactions = Transaction::where('user_id', $request->user()->id)
-            ->with('category')
             ->orderBy('date', 'desc')
             ->get();
 
         return response()->json([
             'success' => true,
-            'data' => $transactions
+            'data' => $transactions,
         ]);
     }
 
@@ -27,7 +37,7 @@ class TransactionController extends Controller
         $request->validate([
             'type' => 'required|in:income,expense',
             'amount' => 'required|numeric|min:0',
-            'category_id' => 'required|exists:categories,_id',
+            'category_id' => 'required|exists:mongodb.categories,_id',
             'note' => 'nullable|string',
             'receipt' => 'nullable|image|max:2048',
             'date' => 'required|date',
@@ -37,7 +47,19 @@ class TransactionController extends Controller
         $data = $request->only(['type', 'amount', 'category_id', 'note', 'date', 'currency']);
         $data['user_id'] = $request->user()->id;
         $data['currency'] = $data['currency'] ?? 'IDR';
-        $data['converted_amount'] = $data['amount']; // Default sama, bisa ditambah logic konversi
+        $data['converted_amount'] = $data['amount'];
+
+        // Get category for denormalization.
+        $category = Category::find($request->category_id);
+        if ($category) {
+            $data['category_snapshot'] = [
+                'id' => $category->_id,
+                'name' => $category->name,
+                'icon' => $category->icon,
+                'color' => $category->color,
+                'type' => $category->type,
+            ];
+        }
 
         // Handle receipt upload
         if ($request->hasFile('receipt')) {
@@ -52,28 +74,6 @@ class TransactionController extends Controller
         $user = $request->user();
         if ($data['type'] == 'income') {
             $user->balance += $data['amount'];
-            $user->points += 5; // Bonus points
-        } else {
-            $user->balance -= $data['amount'];
-            $user->points += 2; // Smaller points for expense
-        }
-        $user->save();
-
-        // Check achievements after transaction
-        $this->checkAchievements($user);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Transaction created successfully',
-            'data' => $transaction->load('category')
-        ], 201);
-
-        $transaction = Transaction::create($data);
-
-        // Update user balance
-        $user = $request->user();
-        if ($data['type'] == 'income') {
-            $user->balance += $data['amount'];
             $user->points += 5;
         } else {
             $user->balance -= $data['amount'];
@@ -81,15 +81,19 @@ class TransactionController extends Controller
         }
         $user->save();
 
-        // Check achievements (inject service)
-        $achievementService = app(\App\Services\AchievementService::class);
-        $newAchievements = $achievementService->checkAndUnlockAchievements($user);
+        // Check achievements using service.
+        $newAchievements = $this->achievementService->checkAndUnlockAchievements($user);
+
+        // Clear user cache.
+        CacheService::clearUserCache($user->id, [
+            CacheService::monthFromDate($transaction->date),
+        ]);
 
         return response()->json([
             'success' => true,
             'message' => 'Transaction created successfully',
-            'data' => $transaction->load('category'),
-            'new_achievements' => $newAchievements, // Include newly unlocked achievements
+            'data' => $transaction,
+            'new_achievements' => $newAchievements,
         ], 201);
     }
 
@@ -97,12 +101,11 @@ class TransactionController extends Controller
     {
         $transaction = Transaction::where('_id', $id)
             ->where('user_id', $request->user()->id)
-            ->with('category')
             ->firstOrFail();
 
         return response()->json([
             'success' => true,
-            'data' => $transaction
+            'data' => $transaction,
         ]);
     }
 
@@ -115,19 +118,22 @@ class TransactionController extends Controller
         $request->validate([
             'type' => 'sometimes|in:income,expense',
             'amount' => 'sometimes|numeric|min:0',
-            'category_id' => 'sometimes|exists:categories,_id',
+            'category_id' => 'sometimes|exists:mongodb.categories,_id',
             'note' => 'nullable|string',
             'date' => 'sometimes|date',
         ]);
 
-        // Revert old balance
         $user = $request->user();
+        $oldMonth = CacheService::monthFromDate($transaction->date);
+
+        // Revert old balance
         if ($transaction->type == 'income') {
             $user->balance -= $transaction->amount;
         } else {
             $user->balance += $transaction->amount;
         }
 
+        // Update transaction
         $transaction->update($request->all());
 
         // Apply new balance
@@ -138,10 +144,16 @@ class TransactionController extends Controller
         }
         $user->save();
 
+        // Clear cache
+        CacheService::clearUserCache($user->id, [
+            $oldMonth,
+            CacheService::monthFromDate($transaction->fresh()->date),
+        ]);
+
         return response()->json([
             'success' => true,
             'message' => 'Transaction updated successfully',
-            'data' => $transaction->fresh()->load('category')
+            'data' => $transaction->fresh(),
         ]);
     }
 
@@ -151,8 +163,10 @@ class TransactionController extends Controller
             ->where('user_id', $request->user()->id)
             ->firstOrFail();
 
-        // Revert balance
         $user = $request->user();
+        $deletedMonth = CacheService::monthFromDate($transaction->date);
+
+        // Revert balance
         if ($transaction->type == 'income') {
             $user->balance -= $transaction->amount;
         } else {
@@ -162,9 +176,12 @@ class TransactionController extends Controller
 
         $transaction->delete();
 
+        // Clear cache
+        CacheService::clearUserCache($user->id, [$deletedMonth]);
+
         return response()->json([
             'success' => true,
-            'message' => 'Transaction deleted successfully'
+            'message' => 'Transaction deleted successfully',
         ]);
     }
 }

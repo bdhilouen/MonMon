@@ -4,8 +4,8 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Models\Category;
+use App\Services\CacheService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 
 class CategoryController extends Controller
 {
@@ -16,26 +16,25 @@ class CategoryController extends Controller
     public function index(Request $request)
     {
         $userId = $request->user()->id;
-        
+
         // Cache key per user
-        $cacheKey = "categories_user_{$userId}";
-        
-        $categories = Cache::remember($cacheKey, 3600, function () use ($userId) {
+        $categories = CacheService::rememberSmart(CacheService::categoriesKey($userId), 'categories', function () use ($userId) {
             // Get default categories + user's custom categories
             // Single query with OR condition (no N+1)
-            return Category::where(function($query) use ($userId) {
+            return Category::where(function ($query) use ($userId) {
                 $query->whereNull('user_id')
-                      ->orWhere('user_id', $userId);
+                    ->orWhere('user_id', $userId);
             })
-            ->orderBy('type')
-            ->orderBy('name')
-            ->get()
-            ->groupBy('type'); // Group by income/expense
+                ->orderBy('type')
+                ->orderBy('name')
+                ->get()
+                ->groupBy('type')
+                ->toArray(); // Group by income/expense
         });
 
         return response()->json([
             'success' => true,
-            'data' => $categories
+            'data' => $categories,
         ]);
     }
 
@@ -59,13 +58,12 @@ class CategoryController extends Controller
             'type' => $request->type,
         ]);
 
-        // Clear cache
-        Cache::forget("categories_user_{$request->user()->id}");
+        CacheService::clearUserCache($request->user()->id);
 
         return response()->json([
             'success' => true,
             'message' => 'Category created successfully',
-            'data' => $category
+            'data' => $category,
         ], 201);
     }
 
@@ -87,13 +85,12 @@ class CategoryController extends Controller
 
         $category->update($request->all());
 
-        // Clear cache
-        Cache::forget("categories_user_{$request->user()->id}");
+        CacheService::clearUserCache($request->user()->id);
 
         return response()->json([
             'success' => true,
             'message' => 'Category updated successfully',
-            'data' => $category
+            'data' => $category,
         ]);
     }
 
@@ -108,22 +105,21 @@ class CategoryController extends Controller
 
         // Check if category is used in transactions
         $transactionCount = $category->transactions()->count();
-        
+
         if ($transactionCount > 0) {
             return response()->json([
                 'success' => false,
-                'message' => "Cannot delete category. It's used in {$transactionCount} transactions."
+                'message' => "Cannot delete category. It's used in {$transactionCount} transactions.",
             ], 422);
         }
 
         $category->delete();
 
-        // Clear cache
-        Cache::forget("categories_user_{$request->user()->id}");
+        CacheService::clearUserCache($request->user()->id);
 
         return response()->json([
             'success' => true,
-            'message' => 'Category deleted successfully'
+            'message' => 'Category deleted successfully',
         ]);
     }
 }

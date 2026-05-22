@@ -81,4 +81,6 @@ return [
         'validate_csrf_token' => Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class,
     ],
 
+    // ✅ Use MongoDB model
+    'personal_access_token_model' => \App\Models\PersonalAccessToken::class,
 ];

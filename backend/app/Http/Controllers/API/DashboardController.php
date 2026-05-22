@@ -3,12 +3,15 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
-use App\Models\Transaction;
+use App\Models\Category;
 use App\Models\MonthlyWrapped;
+use App\Models\Transaction;
 use App\Models\UserAchievement;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use App\Services\CacheService;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
+use MongoDB\BSON\ObjectId;
+use MongoDB\BSON\UTCDateTime;
 
 class DashboardController extends Controller
 {
@@ -20,80 +23,84 @@ class DashboardController extends Controller
     {
         $user = $request->user();
         $userId = $user->id;
-
-        // Get current month stats using aggregation (efficient)
         $currentMonth = now()->format('Y-m');
-        
-        $monthlyStats = Transaction::raw(function($collection) use ($userId, $currentMonth) {
-            return $collection->aggregate([
-                [
-                    '$match' => [
-                        'user_id' => new \MongoDB\BSON\ObjectId($userId),
-                        '$expr' => [
-                            '$eq' => [
-                                ['$dateToString' => ['format' => '%Y-%m', 'date' => '$date']],
-                                $currentMonth
-                            ]
-                        ]
-                    ]
-                ],
-                [
-                    '$group' => [
-                        '_id' => '$type',
-                        'total' => ['$sum' => '$amount'],
-                        'count' => ['$sum' => 1]
-                    ]
-                ]
-            ]);
-        });
 
-        // Transform aggregation result
-        $stats = [
-            'total_income' => 0,
-            'total_expense' => 0,
-            'income_count' => 0,
-            'expense_count' => 0,
-        ];
+        $dashboardData = CacheService::rememberSmart(
+            CacheService::dashboardKey($userId, $currentMonth),
+            'dashboard',
+            function () use ($user, $userId, $currentMonth) {
+                $monthlyStats = Transaction::raw(function ($collection) use ($userId, $currentMonth) {
+                    return $collection->aggregate([
+                        [
+                            '$match' => [
+                                'user_id' => new ObjectId($userId),
+                                '$expr' => [
+                                    '$eq' => [
+                                        ['$dateToString' => ['format' => '%Y-%m', 'date' => '$date']],
+                                        $currentMonth,
+                                    ],
+                                ],
+                            ],
+                        ],
+                        [
+                            '$group' => [
+                                '_id' => '$type',
+                                'total' => ['$sum' => '$amount'],
+                                'count' => ['$sum' => 1],
+                            ],
+                        ],
+                    ]);
+                });
 
-        foreach ($monthlyStats as $stat) {
-            if ($stat['_id'] == 'income') {
-                $stats['total_income'] = $stat['total'];
-                $stats['income_count'] = $stat['count'];
-            } else {
-                $stats['total_expense'] = $stat['total'];
-                $stats['expense_count'] = $stat['count'];
+                $stats = [
+                    'total_income' => 0,
+                    'total_expense' => 0,
+                    'income_count' => 0,
+                    'expense_count' => 0,
+                ];
+
+                foreach ($monthlyStats as $stat) {
+                    if ($stat['_id'] == 'income') {
+                        $stats['total_income'] = $stat['total'];
+                        $stats['income_count'] = $stat['count'];
+                    } else {
+                        $stats['total_expense'] = $stat['total'];
+                        $stats['expense_count'] = $stat['count'];
+                    }
+                }
+
+                $stats['net_income'] = $stats['total_income'] - $stats['total_expense'];
+                $stats['saving_rate'] = $stats['total_income'] > 0
+                    ? round(($stats['net_income'] / $stats['total_income']) * 100, 2)
+                    : 0;
+
+                $recentTransactions = Transaction::where('user_id', $userId)
+                    ->with('category:_id,name,icon,color')
+                    ->orderBy('date', 'desc')
+                    ->limit(10)
+                    ->get()
+                    ->toArray();
+
+                $achievementsCount = UserAchievement::where('user_id', $userId)->count();
+
+                return [
+                    'user' => [
+                        'name' => $user->name,
+                        'balance' => $user->balance,
+                        'points' => $user->points,
+                        'level' => $user->level,
+                        'streak' => $user->streak,
+                    ],
+                    'monthly_stats' => $stats,
+                    'recent_transactions' => $recentTransactions,
+                    'achievements_unlocked' => $achievementsCount,
+                ];
             }
-        }
-
-        $stats['net_income'] = $stats['total_income'] - $stats['total_expense'];
-        $stats['saving_rate'] = $stats['total_income'] > 0 
-            ? round(($stats['net_income'] / $stats['total_income']) * 100, 2)
-            : 0;
-
-        // Get recent transactions (limited, with category preloaded - no N+1)
-        $recentTransactions = Transaction::where('user_id', $userId)
-            ->with('category:_id,name,icon,color') // Only select needed fields
-            ->orderBy('date', 'desc')
-            ->limit(10)
-            ->get();
-
-        // Get achievements count (efficient)
-        $achievementsCount = UserAchievement::where('user_id', $userId)->count();
+        );
 
         return response()->json([
             'success' => true,
-            'data' => [
-                'user' => [
-                    'name' => $user->name,
-                    'balance' => $user->balance,
-                    'points' => $user->points,
-                    'level' => $user->level,
-                    'streak' => $user->streak,
-                ],
-                'monthly_stats' => $stats,
-                'recent_transactions' => $recentTransactions,
-                'achievements_unlocked' => $achievementsCount,
-            ]
+            'data' => $dashboardData,
         ]);
     }
 
@@ -122,29 +129,29 @@ class DashboardController extends Controller
         ][$groupBy];
 
         // Aggregation pipeline for chart data
-        $chartData = Transaction::raw(function($collection) use ($userId, $startDate, $endDate, $dateFormat) {
+        $chartData = Transaction::raw(function ($collection) use ($userId, $startDate, $endDate, $dateFormat) {
             return $collection->aggregate([
                 [
                     '$match' => [
-                        'user_id' => new \MongoDB\BSON\ObjectId($userId),
+                        'user_id' => new ObjectId($userId),
                         'date' => [
-                            '$gte' => new \MongoDB\BSON\UTCDateTime($startDate->timestamp * 1000),
-                            '$lte' => new \MongoDB\BSON\UTCDateTime($endDate->timestamp * 1000),
-                        ]
-                    ]
+                            '$gte' => new UTCDateTime($startDate->timestamp * 1000),
+                            '$lte' => new UTCDateTime($endDate->timestamp * 1000),
+                        ],
+                    ],
                 ],
                 [
                     '$group' => [
                         '_id' => [
                             'date' => ['$dateToString' => ['format' => $dateFormat, 'date' => '$date']],
-                            'type' => '$type'
+                            'type' => '$type',
                         ],
-                        'total' => ['$sum' => '$amount']
-                    ]
+                        'total' => ['$sum' => '$amount'],
+                    ],
                 ],
                 [
-                    '$sort' => ['_id.date' => 1]
-                ]
+                    '$sort' => ['_id.date' => 1],
+                ],
             ]);
         });
 
@@ -153,55 +160,57 @@ class DashboardController extends Controller
         foreach ($chartData as $item) {
             $date = $item['_id']['date'];
             $type = $item['_id']['type'];
-            
-            if (!isset($formattedData[$date])) {
+
+            if (! isset($formattedData[$date])) {
                 $formattedData[$date] = [
                     'date' => $date,
                     'income' => 0,
                     'expense' => 0,
                 ];
             }
-            
+
             $formattedData[$date][$type] = $item['total'];
         }
 
         // Category breakdown (pie chart data)
-        $categoryBreakdown = Transaction::raw(function($collection) use ($userId, $startDate, $endDate) {
+        $categoryBreakdown = Transaction::raw(function ($collection) use ($userId, $startDate, $endDate) {
             return $collection->aggregate([
                 [
                     '$match' => [
-                        'user_id' => new \MongoDB\BSON\ObjectId($userId),
+                        'user_id' => new ObjectId($userId),
                         'type' => 'expense',
                         'date' => [
-                            '$gte' => new \MongoDB\BSON\UTCDateTime($startDate->timestamp * 1000),
-                            '$lte' => new \MongoDB\BSON\UTCDateTime($endDate->timestamp * 1000),
-                        ]
-                    ]
+                            '$gte' => new UTCDateTime($startDate->timestamp * 1000),
+                            '$lte' => new UTCDateTime($endDate->timestamp * 1000),
+                        ],
+                    ],
                 ],
                 [
                     '$group' => [
                         '_id' => '$category_id',
                         'total' => ['$sum' => '$amount'],
-                        'count' => ['$sum' => 1]
-                    ]
+                        'count' => ['$sum' => 1],
+                    ],
                 ],
                 [
-                    '$sort' => ['total' => -1]
+                    '$sort' => ['total' => -1],
                 ],
                 [
-                    '$limit' => 10
-                ]
+                    '$limit' => 10,
+                ],
             ]);
         });
+        $categoryBreakdown = iterator_to_array($categoryBreakdown);
 
         // Enrich with category details (batch load to avoid N+1)
-        $categoryIds = array_map(fn($item) => $item['_id'], iterator_to_array($categoryBreakdown));
-        $categories = \App\Models\Category::whereIn('_id', $categoryIds)
+        $categoryIds = array_map(fn ($item) => $item['_id'], $categoryBreakdown);
+        $categories = Category::whereIn('_id', $categoryIds)
             ->get()
             ->keyBy('_id');
 
-        $enrichedCategoryData = array_map(function($item) use ($categories) {
+        $enrichedCategoryData = array_map(function ($item) use ($categories) {
             $category = $categories[$item['_id']] ?? null;
+
             return [
                 'category_id' => $item['_id'],
                 'category_name' => $category->name ?? 'Unknown',
@@ -210,14 +219,14 @@ class DashboardController extends Controller
                 'total' => $item['total'],
                 'count' => $item['count'],
             ];
-        }, iterator_to_array($categoryBreakdown));
+        }, $categoryBreakdown);
 
         return response()->json([
             'success' => true,
             'data' => [
                 'timeline' => array_values($formattedData),
                 'category_breakdown' => $enrichedCategoryData,
-            ]
+            ],
         ]);
     }
 
@@ -229,34 +238,50 @@ class DashboardController extends Controller
     {
         $userId = $request->user()->id;
         $monthKey = sprintf('%04d-%02d', $year, $month);
+        $cacheType = $monthKey === now()->format('Y-m') ? 'wrapped_current' : 'wrapped_past';
 
-        // Check if already generated
-        $wrapped = MonthlyWrapped::where('user_id', $userId)
+        $wrapped = CacheService::rememberSmart(
+            CacheService::wrappedKey($userId, $monthKey),
+            $cacheType,
+            fn () => $this->generateWrapped($request, $year, $month, $monthKey)
+        );
+
+        return response()->json([
+            'success' => true,
+            'data' => $wrapped,
+            'insights' => $this->generateInsights($wrapped),
+        ]);
+    }
+
+    /**
+     * Generate or load Monthly Wrapped payload.
+     */
+    private function generateWrapped(Request $request, $year, $month, string $monthKey): array
+    {
+        $userId = $request->user()->id;
+
+        $existing = MonthlyWrapped::where('user_id', $userId)
             ->where('month', $monthKey)
             ->first();
 
-        if ($wrapped) {
-            return response()->json([
-                'success' => true,
-                'data' => $wrapped
-            ]);
+        if ($existing) {
+            return $existing->toArray();
         }
 
-        // Generate new wrapped
         $startDate = Carbon::create($year, $month, 1)->startOfMonth();
         $endDate = $startDate->copy()->endOfMonth();
 
         // Aggregation for monthly stats
-        $stats = Transaction::raw(function($collection) use ($userId, $startDate, $endDate) {
+        $stats = Transaction::raw(function ($collection) use ($userId, $startDate, $endDate) {
             return $collection->aggregate([
                 [
                     '$match' => [
-                        'user_id' => new \MongoDB\BSON\ObjectId($userId),
+                        'user_id' => new ObjectId($userId),
                         'date' => [
-                            '$gte' => new \MongoDB\BSON\UTCDateTime($startDate->timestamp * 1000),
-                            '$lte' => new \MongoDB\BSON\UTCDateTime($endDate->timestamp * 1000),
-                        ]
-                    ]
+                            '$gte' => new UTCDateTime($startDate->timestamp * 1000),
+                            '$lte' => new UTCDateTime($endDate->timestamp * 1000),
+                        ],
+                    ],
                 ],
                 [
                     '$facet' => [
@@ -264,41 +289,41 @@ class DashboardController extends Controller
                             [
                                 '$group' => [
                                     '_id' => '$type',
-                                    'total' => ['$sum' => '$amount']
-                                ]
-                            ]
+                                    'total' => ['$sum' => '$amount'],
+                                ],
+                            ],
                         ],
                         'top_category' => [
                             [
-                                '$match' => ['type' => 'expense']
+                                '$match' => ['type' => 'expense'],
                             ],
                             [
                                 '$group' => [
                                     '_id' => '$category_id',
-                                    'total' => ['$sum' => '$amount']
-                                ]
+                                    'total' => ['$sum' => '$amount'],
+                                ],
                             ],
                             [
-                                '$sort' => ['total' => -1]
+                                '$sort' => ['total' => -1],
                             ],
                             [
-                                '$limit' => 1
-                            ]
+                                '$limit' => 1,
+                            ],
                         ],
                         'transaction_count' => [
                             [
-                                '$count' => 'count'
-                            ]
-                        ]
-                    ]
-                ]
+                                '$count' => 'count',
+                            ],
+                        ],
+                    ],
+                ],
             ])->toArray()[0];
         });
 
         // Process results
         $totalIncome = 0;
         $totalExpense = 0;
-        
+
         foreach ($stats['totals'] as $total) {
             if ($total['_id'] == 'income') {
                 $totalIncome = $total['total'];
@@ -307,13 +332,13 @@ class DashboardController extends Controller
             }
         }
 
-        $savingRate = $totalIncome > 0 
+        $savingRate = $totalIncome > 0
             ? round((($totalIncome - $totalExpense) / $totalIncome) * 100, 2)
             : 0;
 
         $topCategoryId = $stats['top_category'][0]['_id'] ?? null;
-        $topCategory = $topCategoryId 
-            ? \App\Models\Category::find($topCategoryId)
+        $topCategory = $topCategoryId
+            ? Category::find($topCategoryId)
             : null;
 
         $transactionCount = $stats['transaction_count'][0]['count'] ?? 0;
@@ -335,11 +360,7 @@ class DashboardController extends Controller
             'generated_image_url' => null, // Will be generated by frontend
         ]);
 
-        return response()->json([
-            'success' => true,
-            'data' => $wrapped,
-            'insights' => $this->generateInsights($wrapped)
-        ]);
+        return $wrapped->toArray();
     }
 
     /**
@@ -348,23 +369,25 @@ class DashboardController extends Controller
     private function generateInsights($wrapped)
     {
         $insights = [];
+        $savingRate = data_get($wrapped, 'saving_rate', 0);
+        $streak = data_get($wrapped, 'streak', 0);
 
-        if ($wrapped->saving_rate >= 30) {
-            $insights[] = "🌟 Luar biasa! Kamu termasuk top saver!";
-        } elseif ($wrapped->saving_rate >= 20) {
-            $insights[] = "💪 Great job! Savings rate kamu di atas rata-rata!";
-        } elseif ($wrapped->saving_rate >= 10) {
-            $insights[] = "👍 Keep it up! Terus tingkatkan savings rate kamu!";
-        } elseif ($wrapped->saving_rate > 0) {
-            $insights[] = "📈 Mulai bagus! Coba target 10% bulan depan!";
+        if ($savingRate >= 30) {
+            $insights[] = 'Luar biasa! Kamu termasuk top saver!';
+        } elseif ($savingRate >= 20) {
+            $insights[] = 'Great job! Savings rate kamu di atas rata-rata!';
+        } elseif ($savingRate >= 10) {
+            $insights[] = 'Keep it up! Terus tingkatkan savings rate kamu!';
+        } elseif ($savingRate > 0) {
+            $insights[] = 'Mulai bagus! Coba target 10% bulan depan!';
         } else {
-            $insights[] = "⚠️ Waktunya evaluasi pengeluaran bulan ini!";
+            $insights[] = 'Waktunya evaluasi pengeluaran bulan ini!';
         }
 
-        if ($wrapped->streak >= 30) {
-            $insights[] = "🔥 Konsistensi level dewa! {$wrapped->streak} hari berturut-turut!";
-        } elseif ($wrapped->streak >= 7) {
-            $insights[] = "✨ Streak bagus! {$wrapped->streak} hari konsisten!";
+        if ($streak >= 30) {
+            $insights[] = "Konsistensi level dewa! {$streak} hari berturut-turut!";
+        } elseif ($streak >= 7) {
+            $insights[] = "Streak bagus! {$streak} hari konsisten!";
         }
 
         return $insights;

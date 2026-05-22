@@ -7,6 +7,8 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
+use App\Notifications\OTPVerification;
+use App\Models\EmailVerification;
 
 class AuthController extends Controller
 {
@@ -27,18 +29,127 @@ class AuthController extends Controller
             'level' => 1,
             'streak' => 0,
             'last_active_date' => now(),
+            'email_verified_at' => null,
         ]);
 
-        $token = $user->createToken('auth_token')->plainTextToken;
+        // Generate and store OTP
+        $verification = EmailVerification::createForEmail($user->email);
+
+        // Send OTP via email
+        try {
+            $user->notify(new OTPVerification($verification->otp));
+        } catch (\Exception $e) {
+            // If email fails, still return success but log error
+            \Log::error('Failed to send OTP email: ' . $e->getMessage());
+        }
 
         return response()->json([
             'success' => true,
-            'message' => 'Registration successful',
+            'message' => 'Registration successful. Please check your email for OTP verification.',
             'data' => [
-                'user' => $user,
-                'token' => $token,
+                'email' => $user->email,
+                'otp_expires_in' => '10 minutes',
             ]
         ], 201);
+    }
+
+    /**
+     * Verify OTP
+     */
+    public function verifyOTP(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+            'otp' => 'required|string|size:6',
+        ]);
+
+        // Find user
+        $user = User::where('email', $request->email)->first();
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User not found'
+            ], 404);
+        }
+
+        // Check if already verified
+        if ($user->hasVerifiedEmail()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Email already verified'
+            ], 400);
+        }
+
+        // Verify OTP
+        $isValid = EmailVerification::verify($request->email, $request->otp);
+
+        if (!$isValid) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid or expired OTP'
+            ], 400);
+        }
+
+        // Mark email as verified
+        $user->markEmailAsVerified();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Email verified successfully! You can now login.',
+            'data' => [
+                'email' => $user->email,
+                'verified_at' => $user->email_verified_at,
+            ]
+        ], 200);
+    }
+
+    /**
+     * Resend OTP
+     */
+    public function resendOTP(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+        ]);
+
+        $user = User::where('email', $request->email)->first();
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User not found'
+            ], 404);
+        }
+
+        if ($user->hasVerifiedEmail()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Email already verified'
+            ], 400);
+        }
+
+        // Generate new OTP
+        $verification = EmailVerification::createForEmail($user->email);
+
+        // Send OTP via email
+        try {
+            $user->notify(new OTPVerification($verification->otp));
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to send OTP email'
+            ], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'OTP has been resent to your email',
+            'data' => [
+                'email' => $user->email,
+                'otp_expires_in' => '10 minutes',
+            ]
+        ], 200);
     }
 
     public function login(Request $request)
@@ -54,6 +165,15 @@ class AuthController extends Controller
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
             ]);
+        }
+
+        // Check if email is verified
+        if (!$user->hasVerifiedEmail()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Please verify your email first. Check your inbox for OTP.',
+                'error_code' => 'EMAIL_NOT_VERIFIED'
+            ], 403);
         }
 
         // Update streak logic

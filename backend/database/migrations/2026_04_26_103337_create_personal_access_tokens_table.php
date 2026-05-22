@@ -1,8 +1,7 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
@@ -11,16 +10,20 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('personal_access_tokens', function (Blueprint $table) {
-            $table->id();
-            $table->morphs('tokenable');
-            $table->text('name');
-            $table->string('token', 64)->unique();
-            $table->text('abilities')->nullable();
-            $table->timestamp('last_used_at')->nullable();
-            $table->timestamp('expires_at')->nullable()->index();
-            $table->timestamps();
-        });
+        $collection = DB::connection('mongodb')->getCollection('personal_access_tokens');
+
+        $collection->createIndex(['token' => 1], [
+            'name' => 'personal_access_tokens_token_unique_idx',
+            'unique' => true,
+        ]);
+
+        $collection->createIndex(['tokenable_type' => 1, 'tokenable_id' => 1], [
+            'name' => 'personal_access_tokens_tokenable_idx',
+        ]);
+
+        $collection->createIndex(['expires_at' => 1], [
+            'name' => 'personal_access_tokens_expires_at_idx',
+        ]);
     }
 
     /**
@@ -28,6 +31,18 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('personal_access_tokens');
+        $collection = DB::connection('mongodb')->getCollection('personal_access_tokens');
+
+        foreach ([
+            'personal_access_tokens_token_unique_idx',
+            'personal_access_tokens_tokenable_idx',
+            'personal_access_tokens_expires_at_idx',
+        ] as $index) {
+            try {
+                $collection->dropIndex($index);
+            } catch (Throwable) {
+                //
+            }
+        }
     }
 };

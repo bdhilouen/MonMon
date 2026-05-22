@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class ExportController extends Controller
 {
@@ -25,7 +26,6 @@ class ExportController extends Controller
 
         $transactions = Transaction::where('user_id', $userId)
             ->whereBetween('date', [$startDate, $endDate])
-            ->with('category')
             ->orderBy('date', 'desc')
             ->get();
 
@@ -39,16 +39,16 @@ class ExportController extends Controller
         $callback = function() use ($transactions) {
             $file = fopen('php://output', 'w');
             
-            // Header
-            fputcsv($file, ['Date', 'Type', 'Category', 'Amount', 'Note']);
+            // Header CSV
+            fputcsv($file, ['Tanggal', 'Tipe', 'Kategori', 'Jumlah (Rp)', 'Catatan']);
             
-            // Data
+            // Data rows
             foreach ($transactions as $transaction) {
                 fputcsv($file, [
-                    $transaction->date->format('Y-m-d H:i:s'),
-                    ucfirst($transaction->type),
-                    $transaction->category->name ?? 'N/A',
-                    $transaction->amount,
+                    $transaction->date->format('d/m/Y H:i'),
+                    $transaction->type === 'income' ? 'Pemasukan' : 'Pengeluaran',
+                    $transaction->category_snapshot['name'] ?? 'N/A',
+                    number_format($transaction->amount, 0, ',', '.'),
                     $transaction->note ?? '',
                 ]);
             }
@@ -60,8 +60,7 @@ class ExportController extends Controller
     }
 
     /**
-     * Export transactions to PDF
-     * Requires: composer require barryvdh/laravel-dompdf
+     * Export transactions to PDF (using DomPDF)
      */
     public function exportPDF(Request $request)
     {
@@ -77,7 +76,6 @@ class ExportController extends Controller
 
         $transactions = Transaction::where('user_id', $userId)
             ->whereBetween('date', [$startDate, $endDate])
-            ->with('category')
             ->orderBy('date', 'desc')
             ->get();
 
@@ -92,18 +90,21 @@ class ExportController extends Controller
             'total_income' => $totalIncome,
             'total_expense' => $totalExpense,
             'net' => $totalIncome - $totalExpense,
+            'generated_at' => now()->format('d/m/Y H:i'),
         ];
 
-        // Simple HTML template (bisa dibuat lebih bagus)
-        $html = view('exports.transactions_pdf', $data)->render();
-
-        // If using DomPDF
-        // $pdf = \PDF::loadHTML($html);
-        // return $pdf->download('monmon_report.pdf');
-
-        // For now, return HTML (bisa di-convert di frontend)
-        return response($html, 200, [
-            'Content-Type' => 'text/html',
-        ]);
+        // ✅ Generate PDF pakai DomPDF
+        $pdf = Pdf::loadView('exports.transactions_pdf', $data);
+        
+        // Set paper size & orientation
+        $pdf->setPaper('a4', 'portrait');
+        
+        $filename = 'monmon_report_' . now()->format('Y-m-d') . '.pdf';
+        
+        // Download langsung
+        return $pdf->download($filename);
+        
+        // Atau kalau mau stream di browser (preview):
+        // return $pdf->stream($filename);
     }
 }
