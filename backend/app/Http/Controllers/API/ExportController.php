@@ -93,7 +93,7 @@ class ExportController extends Controller
             'generated_at' => now()->format('d/m/Y H:i'),
         ];
 
-        // ✅ Generate PDF pakai DomPDF
+        // Generate PDF pakai DomPDF
         $pdf = Pdf::loadView('exports.transactions_pdf', $data);
         
         // Set paper size & orientation

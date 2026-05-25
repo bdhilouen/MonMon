@@ -7,8 +7,9 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
-use App\Notifications\OTPVerification;
 use App\Models\EmailVerification;
+use App\Mail\OTPMail;
+use Illuminate\Support\Facades\Mail;
 
 class AuthController extends Controller
 {
@@ -37,7 +38,7 @@ class AuthController extends Controller
 
         // Send OTP via email
         try {
-            $user->notify(new OTPVerification($verification->otp));
+            Mail::to($user->email)->send(new OTPMail($verification->otp, $user->name));
         } catch (\Exception $e) {
             // If email fails, still return success but log error
             \Log::error('Failed to send OTP email: ' . $e->getMessage());
@@ -46,6 +47,7 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Registration successful. Please check your email for OTP verification.',
+            'warning' => 'Email might be delayed. Please check spam folder.',
             'data' => [
                 'email' => $user->email,
                 'otp_expires_in' => '10 minutes',
@@ -134,7 +136,7 @@ class AuthController extends Controller
 
         // Send OTP via email
         try {
-            $user->notify(new OTPVerification($verification->otp));
+            Mail::to($user->email)->send(new OTPMail($verification->otp, $user->name));
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,

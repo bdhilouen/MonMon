@@ -15,30 +15,42 @@ use MongoDB\BSON\UTCDateTime;
 
 class DashboardController extends Controller
 {
-    /**
-     * Dashboard overview
-     * Optimized: Single aggregation query instead of multiple
-     */
     public function index(Request $request)
     {
         $user = $request->user();
         $userId = $user->id;
-        $currentMonth = now()->format('Y-m');
+        $monthKey = $request->query('month', now()->format('Y-m'));
+
+        // ✅ Definisikan di sini, sebelum masuk closure
+        if (! preg_match('/^\d{4}-\d{2}$/', $monthKey)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Month must use YYYY-MM format.',
+            ], 422);
+        }
+
+        $startOfMonth = Carbon::createFromFormat('Y-m-d H:i:s', "{$monthKey}-01 00:00:00", 'UTC')
+            ->startOfMonth();
+        $endOfMonth = $startOfMonth->copy()->endOfMonth();
+        $userIdFilter = $this->buildUserIdFilter((string) $userId);
 
         $dashboardData = CacheService::rememberSmart(
-            CacheService::dashboardKey($userId, $currentMonth),
+            CacheService::dashboardKey($userId, $monthKey),
             'dashboard',
-            function () use ($user, $userId, $currentMonth) {
-                $monthlyStats = Transaction::raw(function ($collection) use ($userId, $currentMonth) {
+            function () use ($user, $userId, $userIdFilter, $startOfMonth, $endOfMonth, $monthKey) {
+
+                $startUtc = new UTCDateTime($startOfMonth->timestamp * 1000);
+                $endUtc = new UTCDateTime($endOfMonth->timestamp * 1000);
+
+                // ✅ Ganti $expr dengan range date
+                $monthlyStats = Transaction::raw(function ($collection) use ($userIdFilter, $startUtc, $endUtc) {
                     return $collection->aggregate([
                         [
                             '$match' => [
-                                'user_id' => new ObjectId($userId),
-                                '$expr' => [
-                                    '$eq' => [
-                                        ['$dateToString' => ['format' => '%Y-%m', 'date' => '$date']],
-                                        $currentMonth,
-                                    ],
+                                'user_id' => $userIdFilter,
+                                'date' => [
+                                    '$gte' => $startUtc,
+                                    '$lte' => $endUtc,
                                 ],
                             ],
                         ],
@@ -75,7 +87,6 @@ class DashboardController extends Controller
                     : 0;
 
                 $recentTransactions = Transaction::where('user_id', $userId)
-                    ->with('category:_id,name,icon,color')
                     ->orderBy('date', 'desc')
                     ->limit(10)
                     ->get()
@@ -91,6 +102,7 @@ class DashboardController extends Controller
                         'level' => $user->level,
                         'streak' => $user->streak,
                     ],
+                    'month' => $monthKey,
                     'monthly_stats' => $stats,
                     'recent_transactions' => $recentTransactions,
                     'achievements_unlocked' => $achievementsCount,
@@ -104,39 +116,39 @@ class DashboardController extends Controller
         ]);
     }
 
-    /**
-     * Chart data with date range
-     * Optimized with aggregation pipeline
-     */
     public function chartData(Request $request)
     {
         $request->validate([
             'start_date' => 'required|date',
             'end_date' => 'required|date|after_or_equal:start_date',
-            'group_by' => 'sometimes|in:day,week,month', // Grouping option
+            'group_by' => 'sometimes|in:day,week,month',
         ]);
 
         $userId = $request->user()->id;
-        $startDate = Carbon::parse($request->start_date)->startOfDay();
-        $endDate = Carbon::parse($request->end_date)->endOfDay();
+        $startDate = Carbon::parse($request->start_date, 'UTC')->startOfDay();
+        $endDate = Carbon::parse($request->end_date, 'UTC')->endOfDay();
         $groupBy = $request->group_by ?? 'day';
 
-        // Date format based on grouping
         $dateFormat = [
             'day' => '%Y-%m-%d',
             'week' => '%Y-W%U',
             'month' => '%Y-%m',
         ][$groupBy];
 
-        // Aggregation pipeline for chart data
-        $chartData = Transaction::raw(function ($collection) use ($userId, $startDate, $endDate, $dateFormat) {
+        // ✅ Support both ObjectId and plain string
+        $userIdFilter = $this->buildUserIdFilter((string) $userId);
+        $startUtc = new UTCDateTime($startDate->timestamp * 1000);
+        $endUtc = new UTCDateTime($endDate->timestamp * 1000);
+
+        // ✅ Timeline aggregation
+        $chartData = Transaction::raw(function ($collection) use ($userIdFilter, $startUtc, $endUtc, $dateFormat) {
             return $collection->aggregate([
                 [
                     '$match' => [
-                        'user_id' => new ObjectId($userId),
+                        'user_id' => $userIdFilter,
                         'date' => [
-                            '$gte' => new UTCDateTime($startDate->timestamp * 1000),
-                            '$lte' => new UTCDateTime($endDate->timestamp * 1000),
+                            '$gte' => $startUtc,
+                            '$lte' => $endUtc,
                         ],
                     ],
                 ],
@@ -172,16 +184,17 @@ class DashboardController extends Controller
             $formattedData[$date][$type] = $item['total'];
         }
 
-        // Category breakdown (pie chart data)
-        $categoryBreakdown = Transaction::raw(function ($collection) use ($userId, $startDate, $endDate) {
+        // ✅ Category breakdown pakai category_snapshot (no extra query)
+        // Category breakdown
+        $categoryBreakdown = Transaction::raw(function ($collection) use ($userIdFilter, $startUtc, $endUtc) {
             return $collection->aggregate([
                 [
                     '$match' => [
-                        'user_id' => new ObjectId($userId),
+                        'user_id' => $userIdFilter,
                         'type' => 'expense',
                         'date' => [
-                            '$gte' => new UTCDateTime($startDate->timestamp * 1000),
-                            '$lte' => new UTCDateTime($endDate->timestamp * 1000),
+                            '$gte' => $startUtc,
+                            '$lte' => $endUtc,
                         ],
                     ],
                 ],
@@ -190,6 +203,7 @@ class DashboardController extends Controller
                         '_id' => '$category_id',
                         'total' => ['$sum' => '$amount'],
                         'count' => ['$sum' => 1],
+                        'snapshot' => ['$first' => '$category_snapshot'],
                     ],
                 ],
                 [
@@ -200,26 +214,34 @@ class DashboardController extends Controller
                 ],
             ]);
         });
-        $categoryBreakdown = iterator_to_array($categoryBreakdown);
 
-        // Enrich with category details (batch load to avoid N+1)
-        $categoryIds = array_map(fn ($item) => $item['_id'], $categoryBreakdown);
-        $categories = Category::whereIn('_id', $categoryIds)
-            ->get()
-            ->keyBy('_id');
+        // ✅ Collect category IDs yang snapshotnya null untuk batch query
+        $categoryBreakdownArr = iterator_to_array($categoryBreakdown);
+        $missingSnapshotIds = array_filter(
+            array_map(fn ($item) => data_get($item, 'snapshot.name') ? null : (string) $item['_id'], $categoryBreakdownArr)
+        );
 
-        $enrichedCategoryData = array_map(function ($item) use ($categories) {
-            $category = $categories[$item['_id']] ?? null;
+        // ✅ Batch query categories yang missing (hindari N+1)
+        $categoriesFromDb = $this->loadCategoriesByIds($missingSnapshotIds);
+
+        $enrichedCategoryData = array_map(function ($item) use ($categoriesFromDb) {
+            $snapshot = $item['snapshot'] ?? null;
+            $categoryId = (string) $item['_id'];
+
+            // ✅ Fallback ke DB kalau snapshot null
+            if (! data_get($snapshot, 'name') && isset($categoriesFromDb[$categoryId])) {
+                $snapshot = $categoriesFromDb[$categoryId];
+            }
 
             return [
-                'category_id' => $item['_id'],
-                'category_name' => $category->name ?? 'Unknown',
-                'category_icon' => $category->icon ?? '📦',
-                'category_color' => $category->color ?? '#999999',
+                'category_id' => $categoryId,
+                'category_name' => data_get($snapshot, 'name', 'Unknown'),
+                'category_icon' => data_get($snapshot, 'icon', '📦'),
+                'category_color' => data_get($snapshot, 'color', '#999999'),
                 'total' => $item['total'],
                 'count' => $item['count'],
             ];
-        }, $categoryBreakdown);
+        }, $categoryBreakdownArr);
 
         return response()->json([
             'success' => true,
@@ -230,10 +252,6 @@ class DashboardController extends Controller
         ]);
     }
 
-    /**
-     * Generate Monthly Wrapped
-     * Cached to avoid regeneration
-     */
     public function monthlyWrapped(Request $request, $year, $month)
     {
         $userId = $request->user()->id;
@@ -253,33 +271,26 @@ class DashboardController extends Controller
         ]);
     }
 
-    /**
-     * Generate or load Monthly Wrapped payload.
-     */
     private function generateWrapped(Request $request, $year, $month, string $monthKey): array
     {
         $userId = $request->user()->id;
 
-        $existing = MonthlyWrapped::where('user_id', $userId)
-            ->where('month', $monthKey)
-            ->first();
+        // ✅ Fix timezone: pakai UTC eksplisit
+        $startDate = Carbon::create($year, $month, 1, 0, 0, 0, 'UTC')->startOfMonth();
+        $endDate = Carbon::create($year, $month, 1, 0, 0, 0, 'UTC')->endOfMonth();
 
-        if ($existing) {
-            return $existing->toArray();
-        }
+        $startUtc = new UTCDateTime($startDate->timestamp * 1000);
+        $endUtc = new UTCDateTime($endDate->timestamp * 1000);
+        $userIdFilter = $this->buildUserIdFilter((string) $userId);
 
-        $startDate = Carbon::create($year, $month, 1)->startOfMonth();
-        $endDate = $startDate->copy()->endOfMonth();
-
-        // Aggregation for monthly stats
-        $stats = Transaction::raw(function ($collection) use ($userId, $startDate, $endDate) {
+        $stats = Transaction::raw(function ($collection) use ($userIdFilter, $startUtc, $endUtc) {
             return $collection->aggregate([
                 [
                     '$match' => [
-                        'user_id' => new ObjectId($userId),
+                        'user_id' => $userIdFilter,
                         'date' => [
-                            '$gte' => new UTCDateTime($startDate->timestamp * 1000),
-                            '$lte' => new UTCDateTime($endDate->timestamp * 1000),
+                            '$gte' => $startUtc,
+                            '$lte' => $endUtc,
                         ],
                     ],
                 ],
@@ -294,33 +305,25 @@ class DashboardController extends Controller
                             ],
                         ],
                         'top_category' => [
-                            [
-                                '$match' => ['type' => 'expense'],
-                            ],
+                            ['$match' => ['type' => 'expense']],
                             [
                                 '$group' => [
                                     '_id' => '$category_id',
                                     'total' => ['$sum' => '$amount'],
+                                    'snapshot' => ['$first' => '$category_snapshot'],
                                 ],
                             ],
-                            [
-                                '$sort' => ['total' => -1],
-                            ],
-                            [
-                                '$limit' => 1,
-                            ],
+                            ['$sort' => ['total' => -1]],
+                            ['$limit' => 1],
                         ],
                         'transaction_count' => [
-                            [
-                                '$count' => 'count',
-                            ],
+                            ['$count' => 'count'],
                         ],
                     ],
                 ],
             ])->toArray()[0];
         });
 
-        // Process results
         $totalIncome = 0;
         $totalExpense = 0;
 
@@ -336,36 +339,34 @@ class DashboardController extends Controller
             ? round((($totalIncome - $totalExpense) / $totalIncome) * 100, 2)
             : 0;
 
-        $topCategoryId = $stats['top_category'][0]['_id'] ?? null;
-        $topCategory = $topCategoryId
-            ? Category::find($topCategoryId)
-            : null;
+        $topCategorySnapshot = $stats['top_category'][0]['snapshot'] ?? null;
+        $topCategoryName = data_get($topCategorySnapshot, 'name');
 
+        if (! $topCategoryName && isset($stats['top_category'][0]['_id'])) {
+            $categories = $this->loadCategoriesByIds([(string) $stats['top_category'][0]['_id']]);
+            $topCategoryName = data_get($categories, (string) $stats['top_category'][0]['_id'].'.name');
+        }
         $transactionCount = $stats['transaction_count'][0]['count'] ?? 0;
 
-        // Get streak for that month (simplified - could be more complex)
-        $user = $request->user();
-        $streak = $user->streak;
-
-        // Create wrapped record
-        $wrapped = MonthlyWrapped::create([
-            'user_id' => $userId,
-            'month' => $monthKey,
-            'total_income' => $totalIncome,
-            'total_expense' => $totalExpense,
-            'saving_rate' => $savingRate,
-            'top_category' => $topCategory ? $topCategory->name : null,
-            'total_transactions' => $transactionCount,
-            'streak' => $streak,
-            'generated_image_url' => null, // Will be generated by frontend
-        ]);
+        $wrapped = MonthlyWrapped::updateOrCreate(
+            [
+                'user_id' => $userId,
+                'month' => $monthKey,
+            ],
+            [
+                'total_income' => $totalIncome,
+                'total_expense' => $totalExpense,
+                'saving_rate' => $savingRate,
+                'top_category' => $topCategoryName,
+                'total_transactions' => $transactionCount,
+                'streak' => $request->user()->streak,
+                'generated_image_url' => null,
+            ]
+        );
 
         return $wrapped->toArray();
     }
 
-    /**
-     * Generate insights for wrapped
-     */
     private function generateInsights($wrapped)
     {
         $insights = [];
@@ -391,5 +392,58 @@ class DashboardController extends Controller
         }
 
         return $insights;
+    }
+
+    private function loadCategoriesByIds(array $categoryIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('strval', $categoryIds))));
+
+        if (empty($ids)) {
+            return [];
+        }
+
+        $queryIds = $ids;
+
+        foreach ($ids as $id) {
+            if ($this->isObjectIdString($id)) {
+                $queryIds[] = new ObjectId($id);
+            }
+        }
+
+        return Category::whereIn('_id', $queryIds)
+            ->get()
+            ->mapWithKeys(fn ($category) => [
+                (string) $category->_id => [
+                    'name' => $category->name,
+                    'icon' => $category->icon,
+                    'color' => $category->color,
+                    'type' => $category->type,
+                ],
+            ])
+            ->all();
+    }
+
+    private function buildUserIdFilter(string $userId): array|string
+    {
+        if ($this->isObjectIdString($userId)) {
+            return ['$in' => [new ObjectId($userId), $userId]];
+        }
+
+        return $userId;
+    }
+
+    private function isObjectIdString(string $value): bool
+    {
+        if (! preg_match('/^[a-f0-9]{24}$/i', $value)) {
+            return false;
+        }
+
+        try {
+            new ObjectId($value);
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }

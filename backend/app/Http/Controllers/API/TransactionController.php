@@ -14,7 +14,6 @@ class TransactionController extends Controller
 {
     protected $achievementService;
 
-    // Inject AchievementService via constructor.
     public function __construct(AchievementService $achievementService)
     {
         $this->achievementService = $achievementService;
@@ -37,42 +36,67 @@ class TransactionController extends Controller
         $request->validate([
             'type' => 'required|in:income,expense',
             'amount' => 'required|numeric|min:0',
-            'category_id' => 'required|exists:mongodb.categories,_id',
+            'category_id' => 'required|string',
             'note' => 'nullable|string',
             'receipt' => 'nullable|image|max:2048',
             'date' => 'required|date',
             'currency' => 'nullable|string|size:3',
         ]);
 
+        $category = Category::find($request->category_id);
+
+        if (!$category) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Category not found',
+            ], 404);
+        }
+
+        // Validasi type match
+        if ($category->type !== $request->type) {
+            return response()->json([
+                'success' => false,
+                'message' => "Category '{$category->name}' is for {$category->type}, not {$request->type}",
+                'data' => [
+                    'transaction_type' => $request->type,
+                    'category_type' => $category->type,
+                    'category_name' => $category->name,
+                ],
+            ], 422);
+        }
+
+        // Validasi ownership custom category
+        if ($category->user_id !== null && (string) $category->user_id !== (string) $request->user()->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Category not found',
+            ], 404);
+        }
+
         $data = $request->only(['type', 'amount', 'category_id', 'note', 'date', 'currency']);
         $data['user_id'] = $request->user()->id;
         $data['currency'] = $data['currency'] ?? 'IDR';
         $data['converted_amount'] = $data['amount'];
 
-        // Get category for denormalization.
-        $category = Category::find($request->category_id);
-        if ($category) {
-            $data['category_snapshot'] = [
-                'id' => $category->_id,
-                'name' => $category->name,
-                'icon' => $category->icon,
-                'color' => $category->color,
-                'type' => $category->type,
-            ];
-        }
+        // Pakai $category yang sudah di-fetch sebelumnya
+        $data['category_snapshot'] = [
+            'id' => (string) $category->_id,
+            'name' => $category->name,
+            'icon' => $category->icon,
+            'color' => $category->color,
+            'type' => $category->type,
+        ];
 
-        // Handle receipt upload
         if ($request->hasFile('receipt')) {
-            $file = $request->file('receipt');
-            $path = $file->store('receipts', 'public');
+            $path = $request->file('receipt')->store('receipts', 'public');
             $data['receipt_url'] = Storage::url($path);
         }
 
         $transaction = Transaction::create($data);
 
-        // Update user balance
+        // Update user balance & points
         $user = $request->user();
-        if ($data['type'] == 'income') {
+        if ($data['type'] === 'income') {
             $user->balance += $data['amount'];
             $user->points += 5;
         } else {
@@ -81,10 +105,8 @@ class TransactionController extends Controller
         }
         $user->save();
 
-        // Check achievements using service.
         $newAchievements = $this->achievementService->checkAndUnlockAchievements($user);
 
-        // Clear user cache.
         CacheService::clearUserCache($user->id, [
             CacheService::monthFromDate($transaction->date),
         ]);
@@ -118,42 +140,94 @@ class TransactionController extends Controller
         $request->validate([
             'type' => 'sometimes|in:income,expense',
             'amount' => 'sometimes|numeric|min:0',
-            'category_id' => 'sometimes|exists:mongodb.categories,_id',
+            'category_id' => 'sometimes|string',
             'note' => 'nullable|string',
             'date' => 'sometimes|date',
         ]);
 
+        // Validasi category jalan kalau type ATAU category_id berubah
+        $typeChanging = $request->has('type') && $request->type !== $transaction->type;
+        $categoryChanging = $request->has('category_id') && $request->category_id !== (string) $transaction->category_id;
+
+        if ($typeChanging || $categoryChanging) {
+            // Tentukan category yang akan dipakai setelah update
+            $categoryId = $request->category_id ?? $transaction->category_id;
+            $finalType = $request->type ?? $transaction->type;
+
+            $category = Category::find($categoryId);
+
+            if (!$category) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Category not found',
+                ], 404);
+            }
+
+            // Validasi type match dengan final state
+            if ($category->type !== $finalType) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Category '{$category->name}' is for {$category->type}, not {$finalType}",
+                    'data' => [
+                        'transaction_type' => $finalType,
+                        'category_type' => $category->type,
+                        'category_name' => $category->name,
+                    ],
+                ], 422);
+            }
+
+            // Validasi ownership custom category
+            if ($category->user_id !== null && (string) $category->user_id !== (string) $request->user()->id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Category not found',
+                ], 404);
+            }
+
+            // Update snapshot kalau category berubah
+            if ($categoryChanging) {
+                $request->merge([
+                    'category_snapshot' => [
+                        'id' => (string) $category->_id,
+                        'name' => $category->name,
+                        'icon' => $category->icon,
+                        'color' => $category->color,
+                        'type' => $category->type,
+                    ],
+                ]);
+            }
+        }
+
         $user = $request->user();
         $oldMonth = CacheService::monthFromDate($transaction->date);
 
-        // Revert old balance
-        if ($transaction->type == 'income') {
+        // Revert balance lama
+        if ($transaction->type === 'income') {
             $user->balance -= $transaction->amount;
         } else {
             $user->balance += $transaction->amount;
         }
 
-        // Update transaction
-        $transaction->update($request->all());
+        $transaction->update($request->except('receipt'));
+        $transaction->refresh();
 
-        // Apply new balance
-        if ($transaction->type == 'income') {
+        // Apply balance baru
+        if ($transaction->type === 'income') {
             $user->balance += $transaction->amount;
         } else {
             $user->balance -= $transaction->amount;
         }
         $user->save();
 
-        // Clear cache
         CacheService::clearUserCache($user->id, [
             $oldMonth,
-            CacheService::monthFromDate($transaction->fresh()->date),
+            CacheService::monthFromDate($transaction->date),
         ]);
 
         return response()->json([
             'success' => true,
             'message' => 'Transaction updated successfully',
-            'data' => $transaction->fresh(),
+            'data' => $transaction,
         ]);
     }
 
@@ -166,8 +240,7 @@ class TransactionController extends Controller
         $user = $request->user();
         $deletedMonth = CacheService::monthFromDate($transaction->date);
 
-        // Revert balance
-        if ($transaction->type == 'income') {
+        if ($transaction->type === 'income') {
             $user->balance -= $transaction->amount;
         } else {
             $user->balance += $transaction->amount;
@@ -176,7 +249,6 @@ class TransactionController extends Controller
 
         $transaction->delete();
 
-        // Clear cache
         CacheService::clearUserCache($user->id, [$deletedMonth]);
 
         return response()->json([

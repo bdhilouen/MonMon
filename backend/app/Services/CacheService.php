@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Cache;
 
 class CacheService
 {
+    private const KEY_VERSION = 'v2';
+
     public const TTL_SHORT = 300;
 
     public const TTL_MEDIUM = 1800;
@@ -25,12 +27,12 @@ class CacheService
 
     public static function dashboardKey($userId, string $month): string
     {
-        return 'dashboard_'.self::normalizeUserId($userId).'_'.$month;
+        return 'dashboard_'.self::KEY_VERSION.'_'.self::normalizeUserId($userId).'_'.$month;
     }
 
     public static function wrappedKey($userId, string $month): string
     {
-        return 'wrapped_'.self::normalizeUserId($userId).'_'.$month;
+        return 'wrapped_'.self::KEY_VERSION.'_'.self::normalizeUserId($userId).'_'.$month;
     }
 
     public static function categoriesKey($userId): string

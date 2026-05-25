@@ -14,6 +14,7 @@ class Transaction extends Model
         'type',
         'amount',
         'category_id',
+        'category_snapshot',
         'note',
         'receipt_url',
         'currency',
@@ -26,6 +27,7 @@ class Transaction extends Model
         'converted_amount' => 'float',
         'date' => 'datetime',
         'created_at' => 'datetime',
+        'category_snapshot' => 'array',
     ];
 
     public function user()
