@@ -7,12 +7,16 @@ use App\Http\Controllers\API\CategoryController;
 use App\Http\Controllers\API\AchievementController;
 use App\Http\Controllers\API\DashboardController;
 use App\Http\Controllers\API\ExportController;
+use App\Http\Controllers\API\ForgotPasswordController;
 
 // Public routes
-Route::post('/register',    [AuthController::class, 'register']);
-Route::post('/verify-otp',  [AuthController::class, 'verifyOTP']);
-Route::post('/resend-otp',  [AuthController::class, 'resendOTP']);
-Route::post('/login',       [AuthController::class, 'login']);
+Route::post('/register',        [AuthController::class, 'register']);
+Route::post('/verify-otp',      [AuthController::class, 'verifyOTP']);
+Route::post('/resend-otp',      [AuthController::class, 'resendOTP']);
+Route::post('/login',           [AuthController::class, 'login']);
+Route::post('/forgot-password', [ForgotPasswordController::class, 'forgotPassword']);
+Route::post('/verify-reset-otp',[ForgotPasswordController::class, 'verifyResetOTP']);
+Route::post('/reset-password',  [ForgotPasswordController::class, 'resetPassword']);
 
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
