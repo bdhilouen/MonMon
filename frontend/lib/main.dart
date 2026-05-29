@@ -1,8 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:frontend/screens/main_page.dart';
-import 'screens/home_page.dart';
+
 import 'data/app_data.dart';
-void main() async{
+import 'screens/main_page.dart';
+import 'screens/web_main_page.dart';
+
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await loadData();
@@ -17,7 +20,28 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const MaterialApp(
-      home: MainPage(),
+      debugShowCheckedModeBanner: false,
+      home: ResponsiveRoot(),
+    );
+  }
+}
+
+class ResponsiveRoot extends StatelessWidget {
+  const ResponsiveRoot({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool isDesktopWeb =
+            kIsWeb && constraints.maxWidth >= 900;
+
+        if (isDesktopWeb) {
+          return const WebMainPage();
+        }
+
+        return const MainPage();
+      },
     );
   }
 }
