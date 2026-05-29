@@ -24,18 +24,18 @@
             padding: 30px;
             border-radius: 0 0 10px 10px;
         }
-        .otp-box {
+        .token-box {
             background: white;
             border: 2px dashed #FF5722;
             padding: 20px;
             text-align: center;
             margin: 20px 0;
             border-radius: 8px;
+            word-break: break-all;
         }
-        .otp-code {
-            font-size: 32px;
+        .token-code {
+            font-size: 16px;
             font-weight: bold;
-            letter-spacing: 5px;
             color: #FF5722;
         }
         .warning {
@@ -63,13 +63,13 @@
     <div class="content">
         <p>Halo <strong>{{ $userName }}</strong>!</p>
 
-        <p>Kami menerima permintaan reset password untuk akun MonMon kamu. Masukkan kode OTP berikut:</p>
+        <p>Kami menerima permintaan reset password untuk akun MonMon kamu. Gunakan token berikut di aplikasi:</p>
 
-        <div class="otp-box">
-            <div class="otp-code">{{ $otp }}</div>
+        <div class="token-box">
+            <div class="token-code">{{ $token }}</div>
         </div>
 
-        <p><strong>Kode ini akan kadaluarsa dalam 10 menit.</strong></p>
+        <p><strong>Token ini akan kadaluarsa dalam 60 menit.</strong></p>
 
         <div class="warning">
             ⚠️ Jika kamu tidak meminta reset password, abaikan email ini. Password kamu tidak akan berubah.

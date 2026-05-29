@@ -1,67 +1,22 @@
-import '../models/transaction.dart';
-import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
-List<String> categories = [
-  "Makan",
-  "Transport",
-  "Hiburan",
-];
-
-List<Transaction> transaksi = [];
-
-int saldo = 0;
-
-Future<void> saveData() async {
-
-  final prefs =
-  await SharedPreferences.getInstance();
-
-  prefs.setInt('saldo', saldo);
-
-  prefs.setStringList(
-    'categories',
-    categories,
-  );
-
-  List<String> transaksiJson =
-  transaksi.map((t) {
-
-    return jsonEncode(t.toJson());
-
-  }).toList();
-
-  prefs.setStringList(
-    'transaksi',
-    transaksiJson,
-  );
+// Token-only storage (transactions & categories now come from API)
+Future<String?> getAuthToken() async {
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getString('auth_token');
 }
 
-Future<void> loadData() async {
+Future<void> saveAuthToken(String token) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString('auth_token', token);
+}
 
-  final prefs =
-  await SharedPreferences.getInstance();
+Future<void> clearAuthToken() async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.remove('auth_token');
+}
 
-  saldo = prefs.getInt('saldo') ?? 0;
-
-  categories =
-      prefs.getStringList('categories') ??
-          [
-            "Makan",
-            "Transport",
-            "Hiburan",
-            "Lainnya",
-          ];
-
-  List<String> transaksiJson =
-      prefs.getStringList('transaksi') ?? [];
-
-  transaksi =
-      transaksiJson.map((item) {
-
-        return Transaction.fromJson(
-          jsonDecode(item),
-        );
-
-      }).toList();
+Future<void> clearAllLocalData() async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.clear();
 }

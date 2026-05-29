@@ -28,30 +28,35 @@ class AchievementController extends Controller
         // Get all achievements
         $achievements = Achievement::all();
 
-        // Get user's unlocked achievements (single query)
-        $unlockedIds = UserAchievement::where('user_id', $userId)
-            ->pluck('achievement_id', 'unlocked_at')
-            ->toArray();
+        $unlockedByAchievement = UserAchievement::where('user_id', $userId)
+            ->get()
+            ->mapWithKeys(fn ($item) => [(string) $item->achievement_id => $item->unlocked_at])
+            ->all();
 
         // Combine data
-        $achievementsWithStatus = $achievements->map(function($achievement) use ($unlockedIds) {
-            $unlockedAt = array_search($achievement->_id, $unlockedIds);
-            
+        $achievementsWithStatus = $achievements->map(function ($achievement) use ($unlockedByAchievement, $request) {
+            $achievementId = (string) $achievement->_id;
+            $unlockedAt = $unlockedByAchievement[$achievementId] ?? null;
+            $progress = $this->achievementService->progressFor($request->user(), $achievement);
+
             return [
-                'id' => $achievement->_id,
+                'id' => $achievementId,
                 'title' => $achievement->title,
                 'description' => $achievement->description,
                 'condition_type' => $achievement->condition_type,
                 'condition_value' => $achievement->condition_value,
                 'icon' => $achievement->icon,
-                'is_unlocked' => $unlockedAt !== false,
-                'unlocked_at' => $unlockedAt ?: null,
+                'is_unlocked' => $unlockedAt !== null,
+                'unlocked_at' => $unlockedAt,
+                'progress_current' => $progress['current'],
+                'progress_target' => $progress['target'],
+                'progress_percentage' => $unlockedAt !== null ? 100 : $progress['percentage'],
             ];
         });
 
         return response()->json([
             'success' => true,
-            'data' => $achievementsWithStatus
+            'data' => $achievementsWithStatus,
         ]);
     }
 
@@ -67,7 +72,7 @@ class AchievementController extends Controller
             ->with('achievement')
             ->orderBy('unlocked_at', 'desc')
             ->get()
-            ->map(function($ua) {
+            ->map(function ($ua) {
                 return [
                     'id' => $ua->achievement->_id,
                     'title' => $ua->achievement->title,
@@ -79,7 +84,7 @@ class AchievementController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $userAchievements
+            'data' => $userAchievements,
         ]);
     }
 
@@ -96,10 +101,10 @@ class AchievementController extends Controller
             'success' => true,
             'data' => [
                 'newly_unlocked' => $newlyUnlocked,
-                'message' => count($newlyUnlocked) > 0 
-                    ? 'Congratulations! You unlocked ' . count($newlyUnlocked) . ' new achievement(s)!'
-                    : 'No new achievements unlocked.'
-            ]
+                'message' => count($newlyUnlocked) > 0
+                    ? 'Congratulations! You unlocked '.count($newlyUnlocked).' new achievement(s)!'
+                    : 'No new achievements unlocked.',
+            ],
         ]);
     }
 }

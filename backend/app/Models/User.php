@@ -2,18 +2,21 @@
 
 namespace App\Models;
 
-use MongoDB\Laravel\Eloquent\Model;
-use Laravel\Sanctum\HasApiTokens;
-use Illuminate\Notifications\Notifiable;
 use Illuminate\Auth\Authenticatable;
+use Illuminate\Auth\Passwords\CanResetPassword;
 use Illuminate\Contracts\Auth\Authenticatable as AuthenticatableContract;
+use Illuminate\Contracts\Auth\CanResetPassword as CanResetPasswordContract;
+use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Str;
+use Laravel\Sanctum\HasApiTokens;
+use MongoDB\Laravel\Eloquent\Model;
 
-class User extends Model implements AuthenticatableContract
+class User extends Model implements AuthenticatableContract, CanResetPasswordContract
 {
-    use HasApiTokens, Notifiable, Authenticatable;
+    use Authenticatable, CanResetPassword, HasApiTokens, Notifiable;
 
     protected $connection = 'mongodb';
+
     protected $collection = 'users';
 
     protected $fillable = [
@@ -44,7 +47,7 @@ class User extends Model implements AuthenticatableContract
     ];
 
     // Fungsi override untuk bypass strict type Sanctum di MongoDB
-    public function createToken(string $name, array $abilities = ['*'], \DateTimeInterface $expiresAt = null)
+    public function createToken(string $name, array $abilities = ['*'], ?\DateTimeInterface $expiresAt = null)
     {
         $plainTextToken = Str::random(40);
 
@@ -55,8 +58,10 @@ class User extends Model implements AuthenticatableContract
             'expires_at' => $expiresAt,
         ]);
 
-        return new class($token, $token->getKey() . '|' . $plainTextToken) {
+        return new class($token, $token->getKey().'|'.$plainTextToken)
+        {
             public $accessToken;
+
             public $plainTextToken;
 
             public function __construct($accessToken, string $plainTextToken)
@@ -70,7 +75,7 @@ class User extends Model implements AuthenticatableContract
     // Check if email is verified
     public function hasVerifiedEmail()
     {
-        return !is_null($this->email_verified_at);
+        return ! is_null($this->email_verified_at);
     }
 
     // Mark email as verified

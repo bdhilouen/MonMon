@@ -2,11 +2,11 @@
 
 namespace App\Services;
 
-use App\Models\User;
 use App\Models\Achievement;
-use App\Models\UserAchievement;
 use App\Models\Transaction;
-use Illuminate\Support\Facades\DB;
+use App\Models\User;
+use App\Models\UserAchievement;
+use MongoDB\BSON\ObjectId;
 
 class AchievementService
 {
@@ -59,114 +59,109 @@ class AchievementService
         return $newlyUnlocked;
     }
 
+    public function progressFor(User $user, Achievement $achievement): array
+    {
+        $current = $this->currentValue($user, $achievement->condition_type);
+        $target = (float) $achievement->condition_value;
+        $percentage = $target > 0 ? min(100, round(($current / $target) * 100, 2)) : 0;
+
+        return [
+            'current' => $current,
+            'target' => $target,
+            'percentage' => $percentage,
+        ];
+    }
+
     /**
      * Check if achievement condition is met
      */
     private function checkCondition(User $user, Achievement $achievement)
     {
-        switch ($achievement->condition_type) {
-            case 'streak':
-                return $user->streak >= $achievement->condition_value;
+        return $this->currentValue($user, $achievement->condition_type) >= $achievement->condition_value;
+    }
 
-            case 'first_saving':
-                // First time saving (income > expense)
-                $totalIncome = Transaction::where('user_id', $user->id)
-                    ->where('type', 'income')
-                    ->sum('amount');
-                $totalExpense = Transaction::where('user_id', $user->id)
-                    ->where('type', 'expense')
-                    ->sum('amount');
-                
-                return ($totalIncome - $totalExpense) >= $achievement->condition_value;
+    private function currentValue(User $user, string $conditionType): float
+    {
+        return match ($conditionType) {
+            'streak' => (float) $user->streak,
+            'first_saving' => $this->totalSaving($user),
+            'saving_rate' => $this->monthlySavingRate($user),
+            'expense_ratio' => $this->monthlyExpenseRatio($user),
+            'transaction_count' => (float) Transaction::where('user_id', $user->id)->count(),
+            default => 0,
+        };
+    }
 
-            case 'saving_rate':
-                // Achieve certain saving rate in a month
-                $currentMonth = now()->format('Y-m');
-                
-                $monthlyStats = Transaction::raw(function($collection) use ($user, $currentMonth) {
-                    return $collection->aggregate([
-                        [
-                            '$match' => [
-                                'user_id' => new \MongoDB\BSON\ObjectId($user->id),
-                                '$expr' => [
-                                    '$eq' => [
-                                        ['$dateToString' => ['format' => '%Y-%m', 'date' => '$date']],
-                                        $currentMonth
-                                    ]
-                                ]
-                            ]
-                        ],
-                        [
-                            '$group' => [
-                                '_id' => '$type',
-                                'total' => ['$sum' => '$amount']
-                            ]
-                        ]
-                    ])->toArray();
-                });
+    private function totalSaving(User $user): float
+    {
+        $totalIncome = Transaction::where('user_id', $user->id)
+            ->where('type', 'income')
+            ->sum('amount');
+        $totalExpense = Transaction::where('user_id', $user->id)
+            ->where('type', 'expense')
+            ->sum('amount');
 
-                $income = 0;
-                $expense = 0;
-                foreach ($monthlyStats as $stat) {
-                    if ($stat['_id'] == 'income') {
-                        $income = $stat['total'];
-                    } else {
-                        $expense = $stat['total'];
-                    }
-                }
+        return (float) max(0, $totalIncome - $totalExpense);
+    }
 
-                $savingRate = $income > 0 ? (($income - $expense) / $income) * 100 : 0;
-                
-                return $savingRate >= $achievement->condition_value;
+    private function monthlySavingRate(User $user): float
+    {
+        [$income, $expense] = $this->currentMonthTotals($user);
 
-            case 'expense_ratio':
-                // Expense is X times smaller than income
-                $monthlyStats = Transaction::raw(function($collection) use ($user) {
-                    $currentMonth = now()->format('Y-m');
-                    return $collection->aggregate([
-                        [
-                            '$match' => [
-                                'user_id' => new \MongoDB\BSON\ObjectId($user->id),
-                                '$expr' => [
-                                    '$eq' => [
-                                        ['$dateToString' => ['format' => '%Y-%m', 'date' => '$date']],
-                                        $currentMonth
-                                    ]
-                                ]
-                            ]
-                        ],
-                        [
-                            '$group' => [
-                                '_id' => '$type',
-                                'total' => ['$sum' => '$amount']
-                            ]
-                        ]
-                    ])->toArray();
-                });
+        return $income > 0 ? (float) (($income - $expense) / $income) * 100 : 0;
+    }
 
-                $income = 0;
-                $expense = 0;
-                foreach ($monthlyStats as $stat) {
-                    if ($stat['_id'] == 'income') {
-                        $income = $stat['total'];
-                    } else {
-                        $expense = $stat['total'];
-                    }
-                }
+    private function monthlyExpenseRatio(User $user): float
+    {
+        [$income, $expense] = $this->currentMonthTotals($user);
 
-                if ($income == 0 || $expense == 0) {
-                    return false;
-                }
-
-                $ratio = $income / $expense;
-                return $ratio >= $achievement->condition_value;
-
-            case 'transaction_count':
-                $count = Transaction::where('user_id', $user->id)->count();
-                return $count >= $achievement->condition_value;
-
-            default:
-                return false;
+        if ($income <= 0 || $expense <= 0) {
+            return 0;
         }
+
+        return (float) ($income / $expense);
+    }
+
+    private function currentMonthTotals(User $user): array
+    {
+        $currentMonth = now()->format('Y-m');
+        $userId = (string) $user->id;
+        $userIdFilter = preg_match('/^[a-f0-9]{24}$/i', $userId)
+            ? ['$in' => [new ObjectId($userId), $userId]]
+            : $userId;
+
+        $monthlyStats = Transaction::raw(function ($collection) use ($userIdFilter, $currentMonth) {
+            return $collection->aggregate([
+                [
+                    '$match' => [
+                        'user_id' => $userIdFilter,
+                        '$expr' => [
+                            '$eq' => [
+                                ['$dateToString' => ['format' => '%Y-%m', 'date' => '$date']],
+                                $currentMonth,
+                            ],
+                        ],
+                    ],
+                ],
+                [
+                    '$group' => [
+                        '_id' => '$type',
+                        'total' => ['$sum' => '$amount'],
+                    ],
+                ],
+            ])->toArray();
+        });
+
+        $income = 0;
+        $expense = 0;
+        foreach ($monthlyStats as $stat) {
+            if ($stat['_id'] == 'income') {
+                $income = $stat['total'];
+            } else {
+                $expense = $stat['total'];
+            }
+        }
+
+        return [(float) $income, (float) $expense];
     }
 }

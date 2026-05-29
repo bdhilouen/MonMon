@@ -4,6 +4,7 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Models\Category;
+use App\Models\Transaction;
 use App\Services\CacheService;
 use Illuminate\Http\Request;
 
@@ -83,7 +84,7 @@ class CategoryController extends Controller
             'type' => 'sometimes|in:income,expense',
         ]);
 
-        $category->update($request->all());
+        $category->update($request->only(['name', 'icon', 'color', 'type']));
 
         CacheService::clearUserCache($request->user()->id);
 
@@ -97,14 +98,16 @@ class CategoryController extends Controller
     /**
      * Delete custom category
      */
-    public function destroy($id, Request $request)
+    public function destroy(Request $request, $id)
     {
         $category = Category::where('_id', $id)
             ->where('user_id', $request->user()->id)
             ->firstOrFail();
 
         // Check if category is used in transactions
-        $transactionCount = $category->transactions()->count();
+        $transactionCount = Transaction::where('user_id', $request->user()->id)
+            ->where('category_id', $id)
+            ->count();
 
         if ($transactionCount > 0) {
             return response()->json([

@@ -4,16 +4,17 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Mail\ResetPasswordMail;
-use App\Models\PasswordResetToken;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Password;
+use Illuminate\Validation\ValidationException;
 
 class ForgotPasswordController extends Controller
 {
     /**
-     * Step 1: Request OTP untuk reset password
+     * Request password reset token via Laravel Password Broker.
      * POST /api/forgot-password
      */
     public function forgotPassword(Request $request)
@@ -24,17 +25,14 @@ class ForgotPasswordController extends Controller
 
         $user = User::where('email', $request->email)->first();
 
-        // ✅ Selalu return success walau email tidak ditemukan
-        // Ini untuk mencegah user enumeration attack
-        if (!$user) {
+        if (! $user) {
             return response()->json([
                 'success' => true,
-                'message' => 'Jika email terdaftar, OTP akan dikirim ke email kamu.',
+                'message' => 'Jika email terdaftar, token reset akan dikirim ke email kamu.',
             ]);
         }
 
-        // ✅ Cek email sudah verified atau belum
-        if (!$user->hasVerifiedEmail()) {
+        if (! $user->hasVerifiedEmail()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Email belum diverifikasi. Silakan verifikasi email terlebih dahulu.',
@@ -42,16 +40,17 @@ class ForgotPasswordController extends Controller
             ], 403);
         }
 
-        // Generate OTP dan simpan ke database
-        $resetToken = PasswordResetToken::createForEmail($user->email);
-
-        // Kirim email
         try {
-            Mail::to($user->email)->send(
-                new ResetPasswordMail($resetToken->otp, $user->name)
+            $status = Password::broker()->sendResetLink(
+                ['email' => $user->email],
+                function ($user, string $token) {
+                    Mail::to($user->email)->send(
+                        new ResetPasswordMail($token, $user->name)
+                    );
+                }
             );
         } catch (\Exception $e) {
-            \Log::error('Failed to send reset password email: ' . $e->getMessage());
+            \Log::error('Failed to send reset password email: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
@@ -59,88 +58,113 @@ class ForgotPasswordController extends Controller
             ], 500);
         }
 
+        if ($status === Password::RESET_THROTTLED) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tunggu sebentar sebelum meminta token reset baru.',
+            ], 429);
+        }
+
+        if ($status !== Password::RESET_LINK_SENT) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal membuat token reset password.',
+            ], 500);
+        }
+
         return response()->json([
             'success' => true,
-            'message' => 'OTP berhasil dikirim ke email kamu.',
+            'message' => 'Token reset password berhasil dikirim ke email kamu.',
             'data' => [
                 'email' => $user->email,
-                'otp_expires_in' => '10 minutes',
+                'token_expires_in' => config('auth.passwords.users.expire').' minutes',
             ],
         ]);
     }
 
     /**
-     * Step 2: Verifikasi OTP
+     * Backward-compatible token verification endpoint.
      * POST /api/verify-reset-otp
      */
     public function verifyResetOTP(Request $request)
     {
         $request->validate([
             'email' => 'required|email',
-            'otp' => 'required|string|size:6',
+            'otp' => 'nullable|string',
+            'token' => 'nullable|string',
+            'reset_token' => 'nullable|string',
         ]);
 
-        $record = PasswordResetToken::verifyOTP($request->email, $request->otp);
+        $token = $request->input('token')
+            ?? $request->input('reset_token')
+            ?? $request->input('otp');
 
-        if (!$record) {
+        if (! $token) {
+            throw ValidationException::withMessages([
+                'token' => ['Token reset wajib diisi.'],
+            ]);
+        }
+
+        $user = User::where('email', $request->email)->first();
+        $valid = $user && Password::broker()->tokenExists($user, $token);
+
+        if (! $valid) {
             return response()->json([
                 'success' => false,
-                'message' => 'OTP tidak valid atau sudah kadaluarsa.',
+                'message' => 'Token tidak valid atau sudah kadaluarsa.',
             ], 400);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'OTP valid. Silakan reset password kamu.',
+            'message' => 'Token valid. Silakan reset password kamu.',
             'data' => [
                 'email' => $request->email,
-                'reset_token' => $record->token, // ✅ Kirim token untuk step selanjutnya
-                'token_expires_in' => '15 minutes',
+                'reset_token' => $token,
             ],
         ]);
     }
 
     /**
-     * Step 3: Reset password dengan token
+     * Reset password with broker token.
      * POST /api/reset-password
      */
     public function resetPassword(Request $request)
     {
         $request->validate([
             'email' => 'required|email',
-            'reset_token' => 'required|string',
+            'token' => 'nullable|string',
+            'reset_token' => 'nullable|string',
             'password' => 'required|string|min:8|confirmed',
         ]);
 
-        // Verify reset token
-        $record = PasswordResetToken::verifyToken($request->email, $request->reset_token);
+        $token = $request->input('token') ?? $request->input('reset_token');
+        if (! $token) {
+            throw ValidationException::withMessages([
+                'token' => ['Token reset wajib diisi.'],
+            ]);
+        }
 
-        if (!$record) {
+        $status = Password::broker()->reset(
+            [
+                'email' => $request->email,
+                'password' => $request->password,
+                'password_confirmation' => $request->password_confirmation,
+                'token' => $token,
+            ],
+            function (User $user, string $password) {
+                $user->password = Hash::make($password);
+                $user->save();
+                $user->tokens()->delete();
+            }
+        );
+
+        if ($status !== Password::PASSWORD_RESET) {
             return response()->json([
                 'success' => false,
                 'message' => 'Token tidak valid atau sudah kadaluarsa. Silakan ulangi proses forgot password.',
             ], 400);
         }
-
-        // Update password user
-        $user = User::where('email', $request->email)->first();
-
-        if (!$user) {
-            return response()->json([
-                'success' => false,
-                'message' => 'User tidak ditemukan.',
-            ], 404);
-        }
-
-        // ✅ Update password
-        $user->password = Hash::make($request->password);
-        $user->save();
-
-        // ✅ Hapus semua token Sanctum (force logout semua device)
-        $user->tokens()->delete();
-
-        // ✅ Hapus reset token dari database
-        $record->delete();
 
         return response()->json([
             'success' => true,

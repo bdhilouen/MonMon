@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:frontend/screens/main_page.dart';
-import 'screens/home_page.dart';
-import 'data/app_data.dart';
-void main() async{
+import 'services/api_service.dart';
+import 'screens/login_page.dart';
+import 'screens/main_page.dart';
+
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await loadData();
+  // Initialize API service (load saved token)
+  await ApiService.init();
 
   runApp(const MyApp());
 }
@@ -15,8 +17,15 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: MainPage(),
+    return MaterialApp(
+      title: 'MonMon',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        colorSchemeSeed: Colors.blue,
+        useMaterial3: true,
+        fontFamily: 'Roboto',
+      ),
+      home: ApiService.isLoggedIn ? const MainPage() : const LoginPage(),
     );
   }
 }

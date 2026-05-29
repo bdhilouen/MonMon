@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
-import '../models/transaction.dart';
 import 'package:intl/intl.dart';
+import '../models/dashboard_data.dart';
+import '../models/transaction.dart';
+import '../services/app_refresh_service.dart';
+import '../services/dashboard_service.dart';
+import '../services/transaction_service.dart';
 import '../utils/formatter.dart';
-import '../data/app_data.dart';
-
-
 
 class HomePage extends StatefulWidget {
-
   final Function(int) onTabChange;
 
   const HomePage({
@@ -16,389 +16,332 @@ class HomePage extends StatefulWidget {
   });
 
   @override
-  State<HomePage> createState() => _HomePageState();
+  State<HomePage> createState() => HomePageState();
 }
 
-Color getCategoryColor(String category) {
-  switch (category) {
-    case "Makan":
-      return Colors.orange;
-    case "Transport":
-      return Colors.blue;
-    case "Hiburan":
-      return Colors.purple;
-    case "Pemasukan":
-      return Colors.green;
-    default:
-      return Colors.grey;
+class HomePageState extends State<HomePage> {
+  DashboardData? _dashboard;
+  bool _isLoading = true;
+  String? _errorMessage;
+  String _searchQuery = '';
+  final _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    AppRefreshService.transactionsVersion.addListener(loadDashboard);
+    loadDashboard();
   }
-}
 
-class _HomePageState extends State<HomePage> {
-  bool isIncome = false;
+  Future<void> loadDashboard() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
 
-  String selectedCategory = "Makan";
-  List<String> categories = [
-    "Makan",
-    "Transport",
-    "Hiburan",
-    "Lainnya",
-  ];
+    try {
+      final dashboard = await DashboardService.getDashboard();
+      if (!mounted) return;
 
-  TextEditingController controller = TextEditingController();
-  TextEditingController searchController =
-  TextEditingController();
-  String searchQuery = "";
-  TextEditingController amountController = TextEditingController();
-
-
-
-  Map<String, int> getTotalPerCategory() {
-    Map<String, int> result = {};
-
-    for (var t in transaksi) {
-      if (!t.isIncome) {
-        result[t.category] = (result[t.category] ?? 0) + t.amount;
+      if (dashboard != null) {
+        setState(() {
+          _dashboard = dashboard;
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _errorMessage = 'Gagal memuat data dashboard';
+          _isLoading = false;
+        });
       }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = 'Error: ${e.toString()}';
+        _isLoading = false;
+      });
     }
-
-    return result;
   }
-  List<Transaction> getFilteredTransactions() {
 
-    if (searchQuery.isEmpty) {
-      return transaksi;
-    }
+  List<Transaction> _getFilteredTransactions() {
+    final transactions = _dashboard?.recentTransactions ?? [];
+    if (_searchQuery.isEmpty) return transactions;
 
-    return transaksi.where((t) {
-
-      return t.title
-          .toLowerCase()
-          .contains(
-        searchQuery.toLowerCase(),
-      );
-
+    return transactions.where((t) {
+      return t.categoryName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+          (t.note ?? '').toLowerCase().contains(_searchQuery.toLowerCase());
     }).toList();
   }
-  int getTotalIncome() {
-    int total = 0;
 
-    for (var t in transaksi) {
-      if (t.isIncome) {
-        total += t.amount;
+  Future<void> _deleteTransaction(Transaction transaction) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Hapus Transaksi'),
+        content: const Text('Yakin ingin menghapus transaksi ini?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Hapus', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      final result = await TransactionService.delete(transaction.id);
+      if (result.success) {
+        loadDashboard();
+        AppRefreshService.notifyTransactionsChanged();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Transaksi berhasil dihapus'), backgroundColor: Colors.green),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(result.message), backgroundColor: Colors.red),
+          );
+        }
       }
     }
-
-    return total;
   }
 
-  int getTotalExpense() {
-    int total = 0;
-
-    for (var t in transaksi) {
-      if (!t.isIncome) {
-        total += t.amount;
-      }
+  Color _getCategoryColor(Transaction t) {
+    if (t.categorySnapshot != null && t.categoryColor != '#999999') {
+      try {
+        final hex = t.categoryColor.replaceFirst('#', '');
+        return Color(int.parse('FF$hex', radix: 16));
+      } catch (_) {}
     }
-
-    return total;
+    if (t.isIncome) return Colors.green;
+    return Colors.orange;
   }
 
+  @override
+  void dispose() {
+    AppRefreshService.transactionsVersion.removeListener(loadDashboard);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: false,
       appBar: AppBar(title: const Text("MonMon")),
-      body: Padding(
-        padding : const EdgeInsets.all(16),
-        child:Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text("Saldo: ${formatRupiah(saldo)}",
-                style: TextStyle(
-                  fontSize:24,
-                  fontWeight: FontWeight.bold,
-                  color: saldo >= 0 ? Colors.green : Colors.red,
-                ),
-            ),
-            SizedBox(height: 20),
-
-            Row(
-              children: [
-
-                Expanded(
-                  child: Container(
-                    padding: EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.green,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-
-                    child: Column(
-                      crossAxisAlignment:
-                      CrossAxisAlignment.start,
-
-                      children: [
-                        Text(
-                          "Pemasukan",
-                          style: TextStyle(
-                            color: Colors.white,
-                          ),
-                        ),
-
-                        SizedBox(height: 8),
-
-                        Text(
-                          formatRupiah(getTotalIncome()),
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                SizedBox(width: 10),
-
-                Expanded(
-                  child: Container(
-                    padding: EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-
-                    child: Column(
-                      crossAxisAlignment:
-                      CrossAxisAlignment.start,
-
-                      children: [
-                        Text(
-                          "Pengeluaran",
-                          style: TextStyle(
-                            color: Colors.white,
-                          ),
-                        ),
-
-                        SizedBox(height: 8),
-
-                        Text(
-                          formatRupiah(getTotalExpense()),
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            TextField(
-              controller: searchController,
-
-              decoration: InputDecoration(
-                hintText: "Cari transaksi...",
-
-                prefixIcon: Icon(Icons.search),
-
-                filled: true,
-                fillColor: Colors.grey.shade100,
-
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-
-              onChanged: (value) {
-                setState(() {
-                  searchQuery = value;
-                });
-              },
-            ),
-
-            SizedBox(height: 16),
-            Row(
-              mainAxisAlignment:
-              MainAxisAlignment.spaceBetween,
-              children: [
-
-
-                Text(
-                  "Transaksi Terbaru",
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-
-                TextButton(
-                  onPressed: () {
-                    widget.onTabChange(1);
-                  },
-
-                  child: Text("Lihat Semua"),
-                ),
-              ],
-            ),
-
-            SizedBox(height: 20),
-
-
-
-
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: getTotalPerCategory().entries.map((entry) {
-                  return Container(
-                    margin: EdgeInsets.only(bottom: 6),
-                    padding: EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[200],
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      "${entry.key}: Rp ${entry.value}",
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-
-            transaksi.isEmpty
-                ? Center(
-              child: Text("Belum ada transaksi 😴"),
-            )
-
-            : Expanded(
-
-
-
-              child: ListView.builder(
-                itemCount: getFilteredTransactions().length > 3
-                    ? 3
-                    : getFilteredTransactions().length,
-                itemBuilder: (context, index) {
-                  final filtered = getFilteredTransactions();
-                  final transaction = filtered[index];
-                  return Card(
-                    elevation: 5,
-                    margin: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: ListTile(
-                      leading: Icon(
-                        Icons.circle,
-                        color: getCategoryColor(transaction.category),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _errorMessage != null
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.cloud_off, size: 64, color: Colors.grey.shade400),
+                      const SizedBox(height: 16),
+                      Text(
+                        _errorMessage!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey.shade600),
                       ),
-                      title: Text(transaction.title),
-                      subtitle: Text(
-                        "${transaction.isIncome ? '+' : '-'} ${NumberFormat.currency(
-                          locale: 'id_ID',
-                          symbol: 'Rp ',
-                          decimalDigits: 0,
-                        ).format(transaction.amount)}\n${DateFormat('dd MMM yyyy').format(transaction.date)}",
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: loadDashboard,
+                        child: const Text('Coba Lagi'),
                       ),
-                      onTap: () {
-                        TextEditingController editTitle =
-                        TextEditingController(text: transaction.title);
-
-                        TextEditingController editAmount =
-                        TextEditingController(text: transaction.amount.toString());
-
-                        showDialog(
-                          context: context,
-                          builder: (context) {
-                            return AlertDialog(
-                              title: Text("Edit Transaksi"),
-                              content: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  TextField(controller: editTitle),
-                                  TextField(
-                                    controller: editAmount,
-                                    keyboardType: TextInputType.number,
-                                  ),
-                                ],
+                    ],
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: loadDashboard,
+                  child: CustomScrollView(
+                    slivers: [
+                      SliverPadding(
+                        padding: const EdgeInsets.all(16),
+                        sliver: SliverList(
+                          delegate: SliverChildListDelegate([
+                            // Balance
+                            Text(
+                              "Saldo: ${formatRupiah(_dashboard!.user.balance)}",
+                              style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: _dashboard!.user.balance >= 0
+                                    ? Colors.green
+                                    : Colors.red,
                               ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  child: Text("Batal"),
+                            ),
+                            const SizedBox(height: 20),
+
+                            // Income & Expense cards
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green,
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          "Pemasukan",
+                                          style: TextStyle(color: Colors.white),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          formatRupiah(
+                                              _dashboard!.monthlyStats.totalIncome),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red,
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          "Pengeluaran",
+                                          style: TextStyle(color: Colors.white),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          formatRupiah(
+                                              _dashboard!.monthlyStats.totalExpense),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            const SizedBox(height: 12),
+
+                            // Search
+                            TextField(
+                              controller: _searchController,
+                              decoration: InputDecoration(
+                                hintText: "Cari transaksi...",
+                                prefixIcon: const Icon(Icons.search),
+                                filled: true,
+                                fillColor: Colors.grey.shade100,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: BorderSide.none,
+                                ),
+                              ),
+                              onChanged: (value) {
+                                setState(() {
+                                  _searchQuery = value;
+                                });
+                              },
+                            ),
+
+                            const SizedBox(height: 16),
+
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  "Transaksi Terbaru",
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                                 TextButton(
                                   onPressed: () {
-                                    setState(() {
-                                      int newAmount =
-                                          int.tryParse(editAmount.text) ?? 0;
-
-                                      if (transaction.isIncome) {
-                                        saldo -= transaction.amount;
-                                      } else {
-                                        saldo += transaction.amount;
-                                      }
-
-                                      transaction.title = editTitle.text;
-                                      transaction.amount = newAmount;
-
-                                      if (transaction.isIncome) {
-                                        saldo += newAmount;
-                                      } else {
-                                        saldo -= newAmount;
-                                      }
-
-                                      saveData();
-                                    });
-
-                                    Navigator.pop(context);
+                                    widget.onTabChange(1);
                                   },
-                                  child: Text("Simpan"),
+                                  child: const Text("Lihat Semua"),
                                 ),
                               ],
-                            );
-                          },
-                        );
-                      },
+                            ),
 
-                      trailing: IconButton(
-                        icon: Icon(Icons.delete, color: Colors.red),
-                        onPressed: () {
-                          setState(() {
-                            if (transaction.isIncome) {
-                              saldo -= transaction.amount;
-                            } else {
-                              saldo += transaction.amount;
-                            }
-                            transaksi.remove(transaction);
-                            saveData();
-                          });
-                        },
+                            const SizedBox(height: 8),
+                          ]),
+                        ),
                       ),
-                    ),
-                  );
-                },
-              ),
-            )
-          ],
-        ),
-      ),
+
+                      // Transaction List
+                      if (_getFilteredTransactions().isEmpty)
+                        const SliverToBoxAdapter(
+                          child: Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(20),
+                              child: Text("Belum ada transaksi 😴"),
+                            ),
+                          ),
+                        )
+                      else
+                        SliverPadding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          sliver: SliverList(
+                            delegate: SliverChildBuilderDelegate(
+                              (context, index) {
+                                final transaction =
+                                    _getFilteredTransactions()[index];
+                                return Card(
+                                  elevation: 5,
+                                  margin: const EdgeInsets.symmetric(
+                                      horizontal: 2, vertical: 6),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: ListTile(
+                                    leading: Icon(
+                                      Icons.circle,
+                                      color: _getCategoryColor(transaction),
+                                    ),
+                                    title: Text(transaction.categoryName),
+                                    subtitle: Text(
+                                      "${transaction.isIncome ? '+' : '-'} ${formatRupiah(transaction.amount)}\n${DateFormat('dd MMM yyyy').format(transaction.date)}",
+                                    ),
+                                    trailing: IconButton(
+                                      icon: const Icon(Icons.delete,
+                                          color: Colors.red),
+                                      onPressed: () {
+                                        _deleteTransaction(transaction);
+                                      },
+                                    ),
+                                  ),
+                                );
+                              },
+                              childCount: _getFilteredTransactions().length > 5
+                                  ? 5
+                                  : _getFilteredTransactions().length,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
     );
-  }
-  @override
-  void dispose() {
-    controller.dispose();
-    searchController.dispose();
-    amountController.dispose();
-    super.dispose();
   }
 }
