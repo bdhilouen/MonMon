@@ -25,7 +25,7 @@ class ReportPage extends StatelessWidget {
 
     for (var t in transaksi) {
       if (!t.isIncome) {
-        total += t.amount;
+        total += t.amount.toInt();
       }
     }
 
@@ -42,8 +42,27 @@ class ReportPage extends StatelessWidget {
         return Colors.purple;
       case "Lainnya":
         return Colors.grey;
-      default:
+      case "Pemasukan":
         return Colors.green;
+      default:
+        return Colors.blueGrey;
+    }
+  }
+
+  IconData getCategoryIcon(String category) {
+    switch (category) {
+      case "Makan":
+        return Icons.restaurant;
+      case "Transport":
+        return Icons.directions_bus;
+      case "Hiburan":
+        return Icons.sports_esports;
+      case "Lainnya":
+        return Icons.more_horiz;
+      case "Pemasukan":
+        return Icons.arrow_downward;
+      default:
+        return Icons.category;
     }
   }
 
@@ -55,53 +74,20 @@ class ReportPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Laporan"),
+        elevation: 0,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: data.isEmpty
-            ? Center(
-          child: Text(
-            "Belum ada data pengeluaran 😴",
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey.shade600,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        )
-            : Column(
+      body: data.isEmpty
+          ? const _EmptyReport()
+          : SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade700,
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "Total Pengeluaran",
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    formatRupiah(totalExpense),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
+            _TotalExpenseCard(
+              totalExpense: totalExpense,
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 22),
 
             const Text(
               "Pengeluaran per Kategori",
@@ -111,109 +97,331 @@ class ReportPage extends StatelessWidget {
               ),
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 14),
 
-            SizedBox(
-              height: 260,
-              child: PieChart(
-                PieChartData(
-                  centerSpaceRadius: 45,
-                  sectionsSpace: 3,
-                  sections: data.entries.map((entry) {
-                    final percent =
-                        (entry.value / totalExpense) * 100;
+            Container(
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(22),
+              ),
+              child: Column(
+                children: [
+                  SizedBox(
+                    height: 210,
+                    child: PieChart(
+                      PieChartData(
+                        centerSpaceRadius: 52,
+                        sectionsSpace: 4,
+                        startDegreeOffset: -90,
+                        sections: data.entries.map((entry) {
+                          final percent =
+                              (entry.value / totalExpense) * 100;
 
-                    return PieChartSectionData(
-                      value: entry.value,
-                      title:
-                      "${percent.toStringAsFixed(0)}%",
-                      radius: 85,
-                      color: getCategoryColor(entry.key),
-                      titleStyle: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                          return PieChartSectionData(
+                            value: entry.value,
+                            title:
+                            "${percent.toStringAsFixed(0)}%",
+                            radius: 66,
+                            color: getCategoryColor(entry.key),
+                            titleStyle: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          );
+                        }).toList(),
                       ),
-                    );
-                  }).toList(),
-                ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  Text(
+                    "Distribusi berdasarkan kategori pengeluaran",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
               ),
             ),
 
             const SizedBox(height: 24),
 
-            const Text(
-              "Detail Kategori",
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  "Detail Kategori",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  "${data.length} kategori",
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
             ),
 
             const SizedBox(height: 12),
 
-            Expanded(
-              child: ListView(
-                children: data.entries.map((entry) {
-                  final percent =
-                      (entry.value / totalExpense) * 100;
+            Column(
+              children: data.entries.map((entry) {
+                final percent =
+                    (entry.value / totalExpense) * 100;
 
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 14,
-                          height: 14,
-                          decoration: BoxDecoration(
-                            color: getCategoryColor(entry.key),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-
-                        const SizedBox(width: 12),
-
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment:
-                            CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                entry.key,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                "${percent.toStringAsFixed(0)}% dari total pengeluaran",
-                                style: TextStyle(
-                                  color: Colors.grey.shade600,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        Text(
-                          formatRupiah(entry.value.toInt()),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
-              ),
+                return _CategoryReportItem(
+                  category: entry.key,
+                  amount: entry.value.toInt(),
+                  percent: percent,
+                  color: getCategoryColor(entry.key),
+                  icon: getCategoryIcon(entry.key),
+                );
+              }).toList(),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TotalExpenseCard extends StatelessWidget {
+  final int totalExpense;
+
+  const _TotalExpenseCard({
+    required this.totalExpense,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.red.shade700,
+            Colors.red.shade400,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Total Pengeluaran",
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 14,
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          Text(
+            formatRupiah(totalExpense),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 30,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+
+          const SizedBox(height: 14),
+
+          const Row(
+            children: [
+              Icon(
+                Icons.pie_chart,
+                color: Colors.white,
+                size: 18,
+              ),
+              SizedBox(width: 8),
+              Text(
+                "Ringkasan pengeluaran kamu",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CategoryReportItem extends StatelessWidget {
+  final String category;
+  final int amount;
+  final double percent;
+  final Color color;
+  final IconData icon;
+
+  const _CategoryReportItem({
+    required this.category,
+    required this.amount,
+    required this.percent,
+    required this.color,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: Colors.grey.shade200,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(
+              icon,
+              color: color,
+              size: 22,
+            ),
+          ),
+
+          const SizedBox(width: 12),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  category,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+
+                const SizedBox(height: 5),
+
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: LinearProgressIndicator(
+                    value: percent / 100,
+                    minHeight: 7,
+                    backgroundColor: Colors.grey.shade200,
+                    color: color,
+                  ),
+                ),
+
+                const SizedBox(height: 5),
+
+                Text(
+                  "${percent.toStringAsFixed(0)}% dari total pengeluaran",
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 12),
+
+          SizedBox(
+            width: 86,
+            child: Text(
+              formatRupiah(amount),
+              textAlign: TextAlign.right,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyReport extends StatelessWidget {
+  const _EmptyReport();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.all(26),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.insert_chart_outlined,
+                size: 48,
+                color: Colors.grey.shade500,
+              ),
+
+              const SizedBox(height: 14),
+
+              const Text(
+                "Belum ada laporan",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+
+              const SizedBox(height: 6),
+
+              Text(
+                "Tambahkan transaksi pengeluaran dulu supaya grafik bisa muncul.",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
