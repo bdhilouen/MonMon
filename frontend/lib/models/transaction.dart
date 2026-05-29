@@ -3,7 +3,7 @@ class Transaction {
   int amount;
   final bool isIncome;
   final DateTime date;
-  final String category;
+  String category;
 
   Transaction({
     required this.title,

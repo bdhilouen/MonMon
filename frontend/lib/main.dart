@@ -6,6 +6,7 @@ void main() async{
   WidgetsFlutterBinding.ensureInitialized();
 
   await loadData();
+  await updateLoginStreak();
 
   runApp(const MyApp());
 }

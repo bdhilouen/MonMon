@@ -5,6 +5,35 @@ import '../data/app_data.dart';
 import '../models/transaction.dart';
 import '../utils/formatter.dart';
 
+enum HomeBadgeRule {
+  streak,
+  firstTransaction,
+  activeRecorder,
+  categoryCollector,
+  positiveBalance,
+  controlledExpense,
+  expenseAnalyzer,
+  incomeRecorder,
+}
+
+class HomeWalletBadge {
+  final String name;
+  final String subtitle;
+  final IconData icon;
+  final Color color;
+  final HomeBadgeRule rule;
+  final int target;
+
+  const HomeWalletBadge({
+    required this.name,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
+    required this.rule,
+    required this.target,
+  });
+}
+
 class HomePage extends StatefulWidget {
   final Function(int) onTabChange;
 
@@ -86,6 +115,199 @@ class _HomePageState extends State<HomePage> {
     }
 
     return total;
+  }
+
+  int getExpenseCategoryCount() {
+    final Set<String> expenseCategories = {};
+
+    for (var t in transaksi) {
+      if (!t.isIncome) {
+        expenseCategories.add(t.category);
+      }
+    }
+
+    return expenseCategories.length;
+  }
+
+  List<HomeWalletBadge> getHomeBadges() {
+    return const [
+      HomeWalletBadge(
+        name: "Dompet Defender",
+        subtitle: "Login selama 7 hari berturut-turut.",
+        icon: Icons.shield,
+        color: Color(0xFF35B7E8),
+        rule: HomeBadgeRule.streak,
+        target: 7,
+      ),
+      HomeWalletBadge(
+        name: "Dompet Guardian",
+        subtitle: "Login selama 14 hari berturut-turut.",
+        icon: Icons.verified_user,
+        color: Color(0xFF2ECC71),
+        rule: HomeBadgeRule.streak,
+        target: 14,
+      ),
+      HomeWalletBadge(
+        name: "Dompet Sentinel",
+        subtitle: "Login selama 30 hari berturut-turut.",
+        icon: Icons.visibility,
+        color: Color(0xFFF1C40F),
+        rule: HomeBadgeRule.streak,
+        target: 30,
+      ),
+      HomeWalletBadge(
+        name: "Dompet Vanguard",
+        subtitle: "Login selama 60 hari berturut-turut.",
+        icon: Icons.lock,
+        color: Color(0xFFE67E22),
+        rule: HomeBadgeRule.streak,
+        target: 60,
+      ),
+      HomeWalletBadge(
+        name: "Dompet Commander",
+        subtitle: "Login selama 90 hari berturut-turut.",
+        icon: Icons.military_tech,
+        color: Color(0xFF9B59B6),
+        rule: HomeBadgeRule.streak,
+        target: 90,
+      ),
+      HomeWalletBadge(
+        name: "Dompet Strategist",
+        subtitle: "Login selama 120 hari berturut-turut.",
+        icon: Icons.emoji_events,
+        color: Color(0xFF34495E),
+        rule: HomeBadgeRule.streak,
+        target: 120,
+      ),
+      HomeWalletBadge(
+        name: "Dompet Sovereign",
+        subtitle: "Login selama 365 hari berturut-turut.",
+        icon: Icons.workspace_premium,
+        color: Color(0xFFD4AF37),
+        rule: HomeBadgeRule.streak,
+        target: 365,
+      ),
+
+      HomeWalletBadge(
+        name: "Transaksi Pertama",
+        subtitle: "Kamu sudah mencatat transaksi pertama.",
+        icon: Icons.flag,
+        color: Colors.blue,
+        rule: HomeBadgeRule.firstTransaction,
+        target: 1,
+      ),
+      HomeWalletBadge(
+        name: "Pencatat Aktif",
+        subtitle: "Kamu sudah mencatat minimal 10 transaksi.",
+        icon: Icons.edit_note,
+        color: Colors.orange,
+        rule: HomeBadgeRule.activeRecorder,
+        target: 10,
+      ),
+      HomeWalletBadge(
+        name: "Kolektor Kategori",
+        subtitle: "Kamu punya minimal 5 kategori transaksi.",
+        icon: Icons.category,
+        color: Colors.purple,
+        rule: HomeBadgeRule.categoryCollector,
+        target: 5,
+      ),
+      HomeWalletBadge(
+        name: "Saldo Aman",
+        subtitle: "Saldo kamu masih bernilai positif.",
+        icon: Icons.safety_check,
+        color: Colors.green,
+        rule: HomeBadgeRule.positiveBalance,
+        target: 1,
+      ),
+      HomeWalletBadge(
+        name: "Pengeluaran Terkontrol",
+        subtitle: "Pemasukanmu masih menahan pengeluaran.",
+        icon: Icons.balance,
+        color: Colors.teal,
+        rule: HomeBadgeRule.controlledExpense,
+        target: 1,
+      ),
+      HomeWalletBadge(
+        name: "Analis Dompet",
+        subtitle: "Pengeluaranmu tersebar di minimal 3 kategori.",
+        icon: Icons.pie_chart,
+        color: Colors.red,
+        rule: HomeBadgeRule.expenseAnalyzer,
+        target: 3,
+      ),
+      HomeWalletBadge(
+        name: "Ada Pemasukan",
+        subtitle: "Kamu sudah mencatat transaksi pemasukan.",
+        icon: Icons.savings,
+        color: Colors.indigo,
+        rule: HomeBadgeRule.incomeRecorder,
+        target: 1,
+      ),
+    ];
+  }
+
+  bool isHomeBadgeUnlocked({
+    required HomeWalletBadge badge,
+    required int totalTransaction,
+    required int totalCategory,
+    required int expenseCategoryCount,
+    required int totalIncome,
+    required int totalExpense,
+  }) {
+    switch (badge.rule) {
+      case HomeBadgeRule.streak:
+        return loginStreak >= badge.target;
+
+      case HomeBadgeRule.firstTransaction:
+        return totalTransaction >= badge.target;
+
+      case HomeBadgeRule.activeRecorder:
+        return totalTransaction >= badge.target;
+
+      case HomeBadgeRule.categoryCollector:
+        return totalCategory >= badge.target;
+
+      case HomeBadgeRule.positiveBalance:
+        return saldo > 0;
+
+      case HomeBadgeRule.controlledExpense:
+        return totalIncome > 0 &&
+            totalExpense > 0 &&
+            totalIncome >= totalExpense;
+
+      case HomeBadgeRule.expenseAnalyzer:
+        return totalExpense > 0 &&
+            expenseCategoryCount >= badge.target;
+
+      case HomeBadgeRule.incomeRecorder:
+        return totalIncome > 0;
+    }
+  }
+
+  HomeWalletBadge? getLatestUnlockedBadge() {
+    final totalIncome = getTotalIncome();
+    final totalExpense = getTotalExpense();
+    final totalTransaction = transaksi.length;
+    final totalCategory = categories.length;
+    final expenseCategoryCount = getExpenseCategoryCount();
+
+    final unlockedBadges = getHomeBadges().where((badge) {
+      return isHomeBadgeUnlocked(
+        badge: badge,
+        totalTransaction: totalTransaction,
+        totalCategory: totalCategory,
+        expenseCategoryCount: expenseCategoryCount,
+        totalIncome: totalIncome,
+        totalExpense: totalExpense,
+      );
+    }).toList();
+
+    if (unlockedBadges.isEmpty) {
+      return null;
+    }
+
+    return unlockedBadges.last;
   }
 
   void editTransaction(Transaction transaction) {
@@ -182,6 +404,7 @@ class _HomePageState extends State<HomePage> {
     final filteredTransactions = getFilteredTransactions();
     final latestTransactions = filteredTransactions.reversed.take(3).toList();
     final categoryData = getTotalPerCategory();
+    final latestBadge = getLatestUnlockedBadge();
 
     final bool isSearching = searchQuery.trim().isNotEmpty;
 
@@ -224,7 +447,25 @@ class _HomePageState extends State<HomePage> {
               ],
             ),
 
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
+
+            if (latestBadge != null) ...[
+              _LatestBadgeCard(
+                badge: latestBadge,
+                loginStreak: loginStreak,
+                onTap: () {
+                  widget.onTabChange(3);
+                },
+              ),
+              const SizedBox(height: 18),
+            ] else ...[
+              _NoBadgeCard(
+                onTap: () {
+                  widget.onTabChange(3);
+                },
+              ),
+              const SizedBox(height: 18),
+            ],
 
             TextField(
               controller: searchController,
@@ -668,6 +909,182 @@ class _EmptyState extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+class _LatestBadgeCard extends StatelessWidget {
+  final HomeWalletBadge badge;
+  final int loginStreak;
+  final VoidCallback onTap;
+
+  const _LatestBadgeCard({
+    required this.badge,
+    required this.loginStreak,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isStreakBadge = badge.rule == HomeBadgeRule.streak;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: badge.color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: badge.color.withValues(alpha: 0.24),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(
+                badge.icon,
+                color: badge.color,
+                size: 28,
+              ),
+            ),
+
+            const SizedBox(width: 12),
+
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Badge Terakhir Didapat",
+                    style: TextStyle(
+                      color: Colors.grey.shade700,
+                      fontSize: 12,
+                    ),
+                  ),
+
+                  const SizedBox(height: 4),
+
+                  Text(
+                    badge.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: badge.color,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+
+                  const SizedBox(height: 4),
+
+                  Text(
+                    isStreakBadge
+                        ? "$loginStreak hari streak aktif"
+                        : badge.subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(width: 8),
+
+            Icon(
+              Icons.chevron_right,
+              color: badge.color,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NoBadgeCard extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _NoBadgeCard({
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: Colors.grey.shade300,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(
+                Icons.lock_outline,
+                color: Colors.grey.shade600,
+                size: 28,
+              ),
+            ),
+
+            const SizedBox(width: 12),
+
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "Belum Ada Badge",
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+
+                  const SizedBox(height: 4),
+
+                  Text(
+                    "Mulai catat transaksi untuk membuka badge.",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            Icon(
+              Icons.chevron_right,
+              color: Colors.grey.shade600,
+            ),
+          ],
+        ),
       ),
     );
   }
