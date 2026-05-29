@@ -1,387 +1,429 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:intl/intl.dart';
 
-import '../models/dashboard_data.dart';
-import '../services/app_refresh_service.dart';
-import '../services/dashboard_service.dart';
-import '../services/export_service.dart';
+import '../data/app_data.dart';
 import '../utils/formatter.dart';
-import 'monthly_wrapped_page.dart';
 
-class ReportPage extends StatefulWidget {
+class ReportPage extends StatelessWidget {
   const ReportPage({super.key});
 
-  @override
-  State<ReportPage> createState() => ReportPageState();
-}
+  Map<String, double> getCategoryData() {
+    Map<String, double> data = {};
 
-class ReportPageState extends State<ReportPage> {
-  ChartDataResponse? _chartData;
-  bool _isLoading = true;
-  String? _errorMessage;
-  bool _isExporting = false;
+    for (var t in transaksi) {
+      if (!t.isIncome) {
+        data[t.category] =
+            (data[t.category] ?? 0) + t.amount.toDouble();
+      }
+    }
 
-  // Default: current month range
-  late DateTime _startDate;
-  late DateTime _endDate;
-
-  @override
-  void initState() {
-    super.initState();
-    final now = DateTime.now();
-    _startDate = DateTime(now.year, now.month, 1);
-    _endDate = now;
-    AppRefreshService.transactionsVersion.addListener(loadChartData);
-    loadChartData();
+    return data;
   }
 
-  @override
-  void dispose() {
-    AppRefreshService.transactionsVersion.removeListener(loadChartData);
-    super.dispose();
+  int getTotalExpense() {
+    int total = 0;
+
+    for (var t in transaksi) {
+      if (!t.isIncome) {
+        total += t.amount.toInt();
+      }
+    }
+
+    return total;
   }
 
-  Future<void> loadChartData() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final data = await DashboardService.getChartData(
-        startDate: DateFormat('yyyy-MM-dd').format(_startDate),
-        endDate: DateFormat('yyyy-MM-dd').format(_endDate),
-        groupBy: 'day',
-      );
-
-      if (!mounted) return;
-      setState(() {
-        _chartData = data;
-        _isLoading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _errorMessage = e.toString();
-        _isLoading = false;
-      });
+  Color getCategoryColor(String category) {
+    switch (category) {
+      case "Makan":
+        return Colors.orange;
+      case "Transport":
+        return Colors.blue;
+      case "Hiburan":
+        return Colors.purple;
+      case "Lainnya":
+        return Colors.grey;
+      case "Pemasukan":
+        return Colors.green;
+      default:
+        return Colors.blueGrey;
     }
   }
 
-  Future<void> _selectDateRange() async {
-    final picked = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-      initialDateRange: DateTimeRange(start: _startDate, end: _endDate),
-    );
-
-    if (picked != null) {
-      setState(() {
-        _startDate = picked.start;
-        _endDate = picked.end;
-      });
-      loadChartData();
+  IconData getCategoryIcon(String category) {
+    switch (category) {
+      case "Makan":
+        return Icons.restaurant;
+      case "Transport":
+        return Icons.directions_bus;
+      case "Hiburan":
+        return Icons.sports_esports;
+      case "Lainnya":
+        return Icons.more_horiz;
+      case "Pemasukan":
+        return Icons.arrow_downward;
+      default:
+        return Icons.category;
     }
-  }
-
-  double get _totalExpense {
-    if (_chartData == null) return 0;
-    return _chartData!.categoryBreakdown.fold(0.0, (sum, c) => sum + c.total);
-  }
-
-  Color _parseColor(String hex) {
-    try {
-      final cleanHex = hex.replaceFirst('#', '');
-      return Color(int.parse('FF$cleanHex', radix: 16));
-    } catch (_) {
-      return Colors.grey;
-    }
-  }
-
-  Future<void> _exportCSV() async {
-    setState(() => _isExporting = true);
-    final result = await ExportService.exportCSV(
-      startDate: DateFormat('yyyy-MM-dd').format(_startDate),
-      endDate: DateFormat('yyyy-MM-dd').format(_endDate),
-    );
-    if (!mounted) return;
-    setState(() => _isExporting = false);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(result.message),
-        backgroundColor: result.success ? Colors.green : Colors.red,
-      ),
-    );
-  }
-
-  Future<void> _exportPDF() async {
-    setState(() => _isExporting = true);
-    final result = await ExportService.exportPDF(
-      startDate: DateFormat('yyyy-MM-dd').format(_startDate),
-      endDate: DateFormat('yyyy-MM-dd').format(_endDate),
-    );
-    if (!mounted) return;
-    setState(() => _isExporting = false);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(result.message),
-        backgroundColor: result.success ? Colors.green : Colors.red,
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final data = getCategoryData();
+    final totalExpense = getTotalExpense();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("Laporan"),
-        actions: [
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.download),
-            enabled: !_isExporting,
-            onSelected: (value) {
-              if (value == 'csv') _exportCSV();
-              if (value == 'pdf') _exportPDF();
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'csv', child: Text('Export CSV')),
-              const PopupMenuItem(value: 'pdf', child: Text('Export PDF')),
+        elevation: 0,
+      ),
+      body: data.isEmpty
+          ? const _EmptyReport()
+          : SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _TotalExpenseCard(
+              totalExpense: totalExpense,
+            ),
+
+            const SizedBox(height: 22),
+
+            const Text(
+              "Pengeluaran per Kategori",
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+
+            const SizedBox(height: 14),
+
+            Container(
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(22),
+              ),
+              child: Column(
+                children: [
+                  SizedBox(
+                    height: 210,
+                    child: PieChart(
+                      PieChartData(
+                        centerSpaceRadius: 52,
+                        sectionsSpace: 4,
+                        startDegreeOffset: -90,
+                        sections: data.entries.map((entry) {
+                          final percent =
+                              (entry.value / totalExpense) * 100;
+
+                          return PieChartSectionData(
+                            value: entry.value,
+                            title:
+                            "${percent.toStringAsFixed(0)}%",
+                            radius: 66,
+                            color: getCategoryColor(entry.key),
+                            titleStyle: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  Text(
+                    "Distribusi berdasarkan kategori pengeluaran",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  "Detail Kategori",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  "${data.length} kategori",
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            Column(
+              children: data.entries.map((entry) {
+                final percent =
+                    (entry.value / totalExpense) * 100;
+
+                return _CategoryReportItem(
+                  category: entry.key,
+                  amount: entry.value.toInt(),
+                  percent: percent,
+                  color: getCategoryColor(entry.key),
+                  icon: getCategoryIcon(entry.key),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TotalExpenseCard extends StatelessWidget {
+  final int totalExpense;
+
+  const _TotalExpenseCard({
+    required this.totalExpense,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.red.shade700,
+            Colors.red.shade400,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Total Pengeluaran",
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 14,
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          Text(
+            formatRupiah(totalExpense),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 30,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+
+          const SizedBox(height: 14),
+
+          const Row(
+            children: [
+              Icon(
+                Icons.pie_chart,
+                color: Colors.white,
+                size: 18,
+              ),
+              SizedBox(width: 8),
+              Text(
+                "Ringkasan pengeluaran kamu",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                ),
+              ),
             ],
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _errorMessage != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(_errorMessage!),
-                      ElevatedButton(
-                        onPressed: loadChartData,
-                        child: const Text('Coba Lagi'),
-                      ),
-                    ],
-                  ),
-                )
-              : RefreshIndicator(
-                  onRefresh: loadChartData,
-                  child: SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Date range selector
-                        InkWell(
-                          onTap: _selectDateRange,
-                          child: Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade100,
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.date_range, size: 20),
-                                const SizedBox(width: 8),
-                                Text(
-                                  "${DateFormat('dd MMM').format(_startDate)} - ${DateFormat('dd MMM yyyy').format(_endDate)}",
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w500),
-                                ),
-                                const Spacer(),
-                                Icon(Icons.arrow_drop_down,
-                                    color: Colors.grey.shade600),
-                              ],
-                            ),
-                          ),
-                        ),
+    );
+  }
+}
 
-                        const SizedBox(height: 16),
+class _CategoryReportItem extends StatelessWidget {
+  final String category;
+  final int amount;
+  final double percent;
+  final Color color;
+  final IconData icon;
 
-                        FilledButton.icon(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const MonthlyWrappedPage(),
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.auto_awesome),
-                          label: const Text('Monthly Wrapped'),
-                        ),
+  const _CategoryReportItem({
+    required this.category,
+    required this.amount,
+    required this.percent,
+    required this.color,
+    required this.icon,
+  });
 
-                        const SizedBox(height: 16),
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: Colors.grey.shade200,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(
+              icon,
+              color: color,
+              size: 22,
+            ),
+          ),
 
-                        // Total Expense Card
-                        Container(
-                          padding: const EdgeInsets.all(18),
-                          decoration: BoxDecoration(
-                            color: Colors.blue.shade700,
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                "Total Pengeluaran",
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 14,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                formatRupiah(_totalExpense),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 26,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+          const SizedBox(width: 12),
 
-                        const SizedBox(height: 24),
-
-                        if (_chartData != null &&
-                            _chartData!.categoryBreakdown.isNotEmpty) ...[
-                          const Text(
-                            "Pengeluaran per Kategori",
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-
-                          // Pie chart
-                          SizedBox(
-                            height: 260,
-                            child: PieChart(
-                              PieChartData(
-                                centerSpaceRadius: 45,
-                                sectionsSpace: 3,
-                                sections: _chartData!.categoryBreakdown
-                                    .map((cat) {
-                                  final percent = _totalExpense > 0
-                                      ? (cat.total / _totalExpense) * 100
-                                      : 0.0;
-
-                                  return PieChartSectionData(
-                                    value: cat.total,
-                                    title:
-                                        "${percent.toStringAsFixed(0)}%",
-                                    radius: 85,
-                                    color: _parseColor(cat.categoryColor),
-                                    titleStyle: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  );
-                                }).toList(),
-                              ),
-                            ),
-                          ),
-
-                          const SizedBox(height: 24),
-
-                          // Category details
-                          const Text(
-                            "Detail Kategori",
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-
-                          ...(_chartData!.categoryBreakdown.map((cat) {
-                            final percent = _totalExpense > 0
-                                ? (cat.total / _totalExpense) * 100
-                                : 0.0;
-
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 10),
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: Colors.grey.shade100,
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 14,
-                                    height: 14,
-                                    decoration: BoxDecoration(
-                                      color:
-                                          _parseColor(cat.categoryColor),
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          "${cat.categoryIcon} ${cat.categoryName}",
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          "${percent.toStringAsFixed(0)}% dari total • ${cat.count} transaksi",
-                                          style: TextStyle(
-                                            color: Colors.grey.shade600,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Text(
-                                    formatRupiah(cat.total),
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          })),
-                        ],
-
-                        if (_chartData == null ||
-                            _chartData!.categoryBreakdown.isEmpty)
-                          Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(40),
-                              child: Text(
-                                "Belum ada data pengeluaran 😴",
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.grey.shade600,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  category,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
+
+                const SizedBox(height: 5),
+
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: LinearProgressIndicator(
+                    value: percent / 100,
+                    minHeight: 7,
+                    backgroundColor: Colors.grey.shade200,
+                    color: color,
+                  ),
+                ),
+
+                const SizedBox(height: 5),
+
+                Text(
+                  "${percent.toStringAsFixed(0)}% dari total pengeluaran",
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 12),
+
+          SizedBox(
+            width: 86,
+            child: Text(
+              formatRupiah(amount),
+              textAlign: TextAlign.right,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyReport extends StatelessWidget {
+  const _EmptyReport();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.all(26),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.insert_chart_outlined,
+                size: 48,
+                color: Colors.grey.shade500,
+              ),
+
+              const SizedBox(height: 14),
+
+              const Text(
+                "Belum ada laporan",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+
+              const SizedBox(height: 6),
+
+              Text(
+                "Tambahkan transaksi pengeluaran dulu supaya grafik bisa muncul.",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
