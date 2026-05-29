@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../models/achievement.dart';
-import '../services/app_refresh_service.dart';
-import '../widgets/achievement_unlocked_dialog.dart';
 import 'add_transaction_page.dart';
 import 'home_page.dart';
 import 'transaction_page.dart';
@@ -19,31 +16,21 @@ class MainPage extends StatefulWidget {
 class _MainPageState extends State<MainPage> {
   int currentIndex = 0;
 
-  final _homeKey = GlobalKey<HomePageState>();
-  final _transactionKey = GlobalKey<TransactionPageState>();
-  final _reportKey = GlobalKey<ReportPageState>();
+  void changePage(int index) {
+    setState(() {
+      currentIndex = index;
+    });
+  }
 
-  Future<void> _handleTransactionResult(dynamic result) async {
-    final changed = result == true ||
-        (result is Map && result['changed'] == true);
-    if (!changed) return;
+  Future<void> openAddTransactionPage() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const AddTransactionPage(),
+      ),
+    );
 
-    AppRefreshService.notifyAllChanged();
-    _homeKey.currentState?.loadDashboard();
-    _transactionKey.currentState?.loadTransactions();
-    _reportKey.currentState?.loadChartData();
-
-    final achievementsJson =
-        result is Map ? result['achievements'] as List? : null;
-    if (achievementsJson != null && achievementsJson.isNotEmpty && mounted) {
-      for (final item in achievementsJson) {
-        if (!mounted) return;
-        final achievement = Achievement.fromJson(
-          Map<String, dynamic>.from(item as Map),
-        );
-        await showAchievementUnlockedDialog(context, achievement);
-      }
-    }
+    setState(() {});
   }
 
   @override
@@ -51,34 +38,17 @@ class _MainPageState extends State<MainPage> {
     return Scaffold(
       resizeToAvoidBottomInset: false,
 
-      body: IndexedStack(
-        index: currentIndex,
-        children: [
-          HomePage(
-            key: _homeKey,
-            onTabChange: (index) {
-              setState(() {
-                currentIndex = index;
-              });
-            },
-          ),
-          TransactionPage(key: _transactionKey),
-          ReportPage(key: _reportKey),
-          const ProfilePage(),
-        ],
-      ),
+      body: [
+        HomePage(
+          onTabChange: changePage,
+        ),
+        const TransactionPage(),
+        const ReportPage(),
+        const ProfilePage(),
+      ][currentIndex],
 
       floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final result = await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const AddTransactionPage(),
-            ),
-          );
-
-          await _handleTransactionResult(result);
-        },
+        onPressed: openAddTransactionPage,
         backgroundColor: Colors.blue,
         child: const Icon(
           Icons.add,
@@ -87,19 +57,16 @@ class _MainPageState extends State<MainPage> {
       ),
 
       floatingActionButtonLocation:
-          FloatingActionButtonLocation.centerDocked,
+      FloatingActionButtonLocation.centerDocked,
 
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: currentIndex,
 
         onTap: (index) {
-          setState(() {
-            currentIndex = index;
-          });
+          changePage(index);
         },
 
         type: BottomNavigationBarType.fixed,
-
         selectedItemColor: Colors.blue,
 
         items: const [
@@ -109,7 +76,7 @@ class _MainPageState extends State<MainPage> {
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.receipt_long),
-            label: "Riwayat Transaksi",
+            label: "Transaksi",
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.bar_chart),
