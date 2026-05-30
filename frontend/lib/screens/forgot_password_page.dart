@@ -28,7 +28,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     setState(() => _isLoading = false);
 
     if (result.success) {
-      showAppSnack(context, 'Token reset dikirim ke email kamu. Cek inbox atau folder spam.');
+      showAppSnack(context, 'OTP reset dikirim ke email kamu. Cek inbox atau folder spam.');
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -75,7 +75,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Token reset akan dikirim ke email akun MonMon kamu.',
+                'OTP reset akan dikirim ke email akun MonMon kamu.',
                 style: TextStyle(color: Colors.grey.shade600),
               ),
               const SizedBox(height: 24),
@@ -104,7 +104,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                           width: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Kirim Token Reset'),
+                      : const Text('Kirim OTP Reset'),
                 ),
               ),
             ],

@@ -54,7 +54,6 @@ class AuthService {
       return (success: true, message: response.message, user: user);
     }
 
-    // Handle email not verified
     String message = response.message;
     if (response.rawBody?['error_code'] == 'EMAIL_NOT_VERIFIED') {
       message = 'EMAIL_NOT_VERIFIED';
@@ -63,25 +62,15 @@ class AuthService {
     return (success: false, message: message, user: null);
   }
 
+  // Forgot Password
   static Future<ApiResponse> forgotPassword({required String email}) async {
     return await ApiService.post('/forgot-password', body: {'email': email});
   }
 
-  // Verify reset token (POST /verify-reset-otp)
-  // Backend accepts field: token, reset_token, atau otp
-  static Future<ApiResponse> verifyResetToken({
-    required String email,
-    required String token,
-  }) async {
-    return await ApiService.post(
-      '/verify-reset-otp',
-      body: {'email': email, 'token': token},
-    );
-  }
-
+  // Reset Password — OTP langsung dipakai tanpa verify step terpisah
   static Future<ApiResponse> resetPassword({
     required String email,
-    required String token,
+    required String otp,
     required String password,
     required String passwordConfirmation,
   }) async {
@@ -89,7 +78,7 @@ class AuthService {
       '/reset-password',
       body: {
         'email': email,
-        'token': token,
+        'otp': otp,
         'password': password,
         'password_confirmation': passwordConfirmation,
       },
