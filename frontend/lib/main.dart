@@ -1,15 +1,15 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import 'data/app_data.dart';
+import 'screens/login_page.dart';
 import 'screens/main_page.dart';
 import 'screens/web_main_page.dart';
+import 'services/api_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await loadData();
-  await updateLoginStreak();
+  await ApiService.init();
 
   runApp(const MyApp());
 }
@@ -31,10 +31,14 @@ class ResponsiveRoot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Check auth first
+    if (!ApiService.isLoggedIn) {
+      return const LoginPage();
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        final bool isDesktopWeb =
-            kIsWeb && constraints.maxWidth >= 900;
+        final bool isDesktopWeb = kIsWeb && constraints.maxWidth >= 900;
 
         if (isDesktopWeb) {
           return const WebMainPage();

@@ -28,7 +28,10 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     setState(() => _isLoading = false);
 
     if (result.success) {
-      showAppSnack(context, 'OTP reset dikirim ke email kamu. Cek inbox atau folder spam.');
+      showAppSnack(
+        context,
+        'OTP reset dikirim ke email kamu. Cek inbox atau folder spam.',
+      );
       Navigator.push(
         context,
         MaterialPageRoute(

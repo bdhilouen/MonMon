@@ -22,7 +22,15 @@ class TransactionService {
   }
 
   // Create transaction
-  static Future<({bool success, String message, Transaction? transaction, List<dynamic>? newAchievements})> create({
+  static Future<
+    ({
+      bool success,
+      String message,
+      Transaction? transaction,
+      List<dynamic>? newAchievements,
+    })
+  >
+  create({
     required String type,
     required double amount,
     required String categoryId,
@@ -30,14 +38,17 @@ class TransactionService {
     required DateTime date,
     String currency = 'IDR',
   }) async {
-    final response = await ApiService.post('/transactions', body: {
-      'type': type,
-      'amount': amount,
-      'category_id': categoryId,
-      'note': note,
-      'date': date.toIso8601String().split('T')[0],
-      'currency': currency,
-    });
+    final response = await ApiService.post(
+      '/transactions',
+      body: {
+        'type': type,
+        'amount': amount,
+        'category_id': categoryId,
+        'note': note,
+        'date': date.toIso8601String().split('T')[0],
+        'currency': currency,
+      },
+    );
 
     if (response.success && response.data != null) {
       return (

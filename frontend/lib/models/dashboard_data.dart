@@ -20,11 +20,13 @@ class DashboardData {
       user: DashboardUser.fromJson(json['user'] ?? {}),
       month: json['month'] ?? '',
       monthlyStats: MonthlyStats.fromJson(json['monthly_stats'] ?? {}),
-      recentTransactions: (json['recent_transactions'] as List?)
+      recentTransactions:
+          (json['recent_transactions'] as List?)
               ?.map((t) => Transaction.fromJson(t))
               .toList() ??
           [],
-      achievementsUnlocked: (json['achievements_unlocked'] as num?)?.toInt() ?? 0,
+      achievementsUnlocked:
+          (json['achievements_unlocked'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -88,18 +90,17 @@ class ChartDataResponse {
   final List<TimelineEntry> timeline;
   final List<CategoryBreakdown> categoryBreakdown;
 
-  ChartDataResponse({
-    required this.timeline,
-    required this.categoryBreakdown,
-  });
+  ChartDataResponse({required this.timeline, required this.categoryBreakdown});
 
   factory ChartDataResponse.fromJson(Map<String, dynamic> json) {
     return ChartDataResponse(
-      timeline: (json['timeline'] as List?)
+      timeline:
+          (json['timeline'] as List?)
               ?.map((t) => TimelineEntry.fromJson(t))
               .toList() ??
           [],
-      categoryBreakdown: (json['category_breakdown'] as List?)
+      categoryBreakdown:
+          (json['category_breakdown'] as List?)
               ?.map((c) => CategoryBreakdown.fromJson(c))
               .toList() ??
           [],
@@ -148,7 +149,7 @@ class CategoryBreakdown {
     return CategoryBreakdown(
       categoryId: json['category_id']?.toString() ?? '',
       categoryName: json['category_name'] ?? 'Unknown',
-      categoryIcon: json['category_icon'] ?? '📦',
+      categoryIcon: json['category_icon'] ?? 'category',
       categoryColor: json['category_color'] ?? '#999999',
       total: (json['total'] as num?)?.toDouble() ?? 0.0,
       count: (json['count'] as num?)?.toInt() ?? 0,

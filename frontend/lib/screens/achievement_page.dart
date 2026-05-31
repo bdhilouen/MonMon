@@ -64,71 +64,65 @@ class _AchievementPageState extends State<AchievementPage> {
       body: _isLoading
           ? const AppLoading()
           : _errorMessage != null
-              ? AppErrorState(
-                  message: _errorMessage!,
-                  onRetry: _loadAchievements,
-                )
-              : RefreshIndicator(
-                  onRefresh: _loadAchievements,
-                  child: CustomScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    slivers: [
-                      SliverPadding(
-                        padding: const EdgeInsets.all(16),
-                        sliver: SliverToBoxAdapter(
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: AppStatCard(
-                                  title: 'Unlocked',
-                                  value: '$_unlockedCount/${_achievements.length}',
-                                  icon: Icons.emoji_events,
-                                  color: Colors.amber.shade700,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: AppStatCard(
-                                  title: 'Progress',
-                                  value: _achievements.isEmpty
-                                      ? '0%'
-                                      : '${((_unlockedCount / _achievements.length) * 100).round()}%',
-                                  icon: Icons.trending_up,
-                                  color: Colors.blue,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      if (_achievements.isEmpty)
-                        const SliverFillRemaining(
-                          hasScrollBody: false,
-                          child: AppEmptyState(
-                            icon: Icons.emoji_events_outlined,
-                            title: 'Belum ada achievement',
-                          ),
-                        )
-                      else
-                        SliverPadding(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-                          sliver: SliverList(
-                            delegate: SliverChildBuilderDelegate(
-                              (context, index) {
-                                return Padding(
-                                  padding: const EdgeInsets.only(bottom: 10),
-                                  child: _AchievementTile(
-                                    achievement: _achievements[index],
-                                  ),
-                                );
-                              },
-                              childCount: _achievements.length,
+          ? AppErrorState(message: _errorMessage!, onRetry: _loadAchievements)
+          : RefreshIndicator(
+              onRefresh: _loadAchievements,
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  SliverPadding(
+                    padding: const EdgeInsets.all(16),
+                    sliver: SliverToBoxAdapter(
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: AppStatCard(
+                              title: 'Unlocked',
+                              value: '$_unlockedCount/${_achievements.length}',
+                              icon: Icons.emoji_events,
+                              color: Colors.amber.shade700,
                             ),
                           ),
-                        ),
-                    ],
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: AppStatCard(
+                              title: 'Progress',
+                              value: _achievements.isEmpty
+                                  ? '0%'
+                                  : '${((_unlockedCount / _achievements.length) * 100).round()}%',
+                              icon: Icons.trending_up,
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
+                  if (_achievements.isEmpty)
+                    const SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: AppEmptyState(
+                        icon: Icons.emoji_events_outlined,
+                        title: 'Belum ada achievement',
+                      ),
+                    )
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate((context, index) {
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: _AchievementTile(
+                              achievement: _achievements[index],
+                            ),
+                          );
+                        }, childCount: _achievements.length),
+                      ),
+                    ),
+                ],
+              ),
+            ),
     );
   }
 }
@@ -148,7 +142,9 @@ class _AchievementTile extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: achievement.isUnlocked ? Colors.amber.shade50 : Colors.grey.shade100,
+        color: achievement.isUnlocked
+            ? Colors.amber.shade50
+            : Colors.grey.shade100,
         borderRadius: BorderRadius.circular(8),
         border: achievement.isUnlocked
             ? Border.all(color: Colors.amber.shade300)

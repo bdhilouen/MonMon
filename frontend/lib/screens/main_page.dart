@@ -25,9 +25,7 @@ class _MainPageState extends State<MainPage> {
   Future<void> openAddTransactionPage() async {
     await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => const AddTransactionPage(),
-      ),
+      MaterialPageRoute(builder: (context) => const AddTransactionPage()),
     );
 
     setState(() {});
@@ -39,9 +37,7 @@ class _MainPageState extends State<MainPage> {
       resizeToAvoidBottomInset: false,
 
       body: [
-        HomePage(
-          onTabChange: changePage,
-        ),
+        HomePage(onTabChange: changePage),
         const TransactionPage(),
         const ReportPage(),
         const ProfilePage(),
@@ -50,14 +46,10 @@ class _MainPageState extends State<MainPage> {
       floatingActionButton: FloatingActionButton(
         onPressed: openAddTransactionPage,
         backgroundColor: Colors.blue,
-        child: const Icon(
-          Icons.add,
-          color: Colors.white,
-        ),
+        child: const Icon(Icons.add, color: Colors.white),
       ),
 
-      floatingActionButtonLocation:
-      FloatingActionButtonLocation.centerDocked,
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
 
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: currentIndex,
@@ -70,10 +62,7 @@ class _MainPageState extends State<MainPage> {
         selectedItemColor: Colors.blue,
 
         items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: "Beranda",
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: "Beranda"),
           BottomNavigationBarItem(
             icon: Icon(Icons.receipt_long),
             label: "Transaksi",
@@ -82,10 +71,7 @@ class _MainPageState extends State<MainPage> {
             icon: Icon(Icons.bar_chart),
             label: "Laporan",
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: "Profile",
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
         ],
       ),
     );

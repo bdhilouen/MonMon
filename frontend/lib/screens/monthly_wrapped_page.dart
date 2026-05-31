@@ -50,8 +50,10 @@ class _MonthlyWrappedPageState extends State<MonthlyWrappedPage> {
     });
 
     try {
-      final wrapped =
-          await DashboardService.getMonthlyWrapped(_month.year, _month.month);
+      final wrapped = await DashboardService.getMonthlyWrapped(
+        _month.year,
+        _month.month,
+      );
       if (!mounted) return;
       setState(() {
         _wrapped = wrapped;
@@ -74,7 +76,8 @@ class _MonthlyWrappedPageState extends State<MonthlyWrappedPage> {
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
     final bytes = byteData!.buffer.asUint8List();
     final directory = await getApplicationDocumentsDirectory();
-    final filename = 'monmon_wrapped_${DateFormat('yyyy_MM').format(_month)}.png';
+    final filename =
+        'monmon_wrapped_${DateFormat('yyyy_MM').format(_month)}.png';
     final file = File('${directory.path}/$filename');
     await file.writeAsBytes(bytes);
     return file;
@@ -98,10 +101,9 @@ class _MonthlyWrappedPageState extends State<MonthlyWrappedPage> {
     setState(() => _isExporting = true);
     try {
       final file = await _captureImage();
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        text: 'Monthly Wrapped MonMon',
-      );
+      await Share.shareXFiles([
+        XFile(file.path),
+      ], text: 'Monthly Wrapped MonMon');
     } catch (e) {
       if (!mounted) return;
       showAppSnack(context, 'Gagal membagikan gambar', success: false);
@@ -146,50 +148,52 @@ class _MonthlyWrappedPageState extends State<MonthlyWrappedPage> {
       body: _isLoading
           ? const AppLoading()
           : _errorMessage != null
-              ? AppErrorState(message: _errorMessage!, onRetry: _loadWrapped)
-              : RefreshIndicator(
-                  onRefresh: _loadWrapped,
-                  child: SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        InkWell(
-                          onTap: _pickMonth,
+          ? AppErrorState(message: _errorMessage!, onRetry: _loadWrapped)
+          : RefreshIndicator(
+              onRefresh: _loadWrapped,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    InkWell(
+                      onTap: _pickMonth,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
                           borderRadius: BorderRadius.circular(8),
-                          child: Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade100,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.calendar_month, size: 20),
-                                const SizedBox(width: 10),
-                                Text(
-                                  DateFormat('MMMM yyyy').format(_month),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const Spacer(),
-                                Icon(Icons.expand_more,
-                                    color: Colors.grey.shade600),
-                              ],
-                            ),
-                          ),
                         ),
-                        const SizedBox(height: 16),
-                        RepaintBoundary(
-                          key: _wrappedKey,
-                          child: _WrappedCard(wrapped: _wrapped!, month: _month),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.calendar_month, size: 20),
+                            const SizedBox(width: 10),
+                            Text(
+                              DateFormat('MMMM yyyy').format(_month),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const Spacer(),
+                            Icon(
+                              Icons.expand_more,
+                              color: Colors.grey.shade600,
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 16),
+                    RepaintBoundary(
+                      key: _wrappedKey,
+                      child: _WrappedCard(wrapped: _wrapped!, month: _month),
+                    ),
+                  ],
                 ),
+              ),
+            ),
     );
   }
 }
@@ -198,10 +202,7 @@ class _WrappedCard extends StatelessWidget {
   final MonthlyWrapped wrapped;
   final DateTime month;
 
-  const _WrappedCard({
-    required this.wrapped,
-    required this.month,
-  });
+  const _WrappedCard({required this.wrapped, required this.month});
 
   @override
   Widget build(BuildContext context) {
@@ -278,10 +279,7 @@ class _WrappedCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          _WrappedMetric(
-            label: 'Streak',
-            value: '${wrapped.streak} hari',
-          ),
+          _WrappedMetric(label: 'Streak', value: '${wrapped.streak} hari'),
           if (wrapped.insights.isNotEmpty) ...[
             const SizedBox(height: 18),
             ...wrapped.insights.map(
@@ -290,8 +288,11 @@ class _WrappedCard extends StatelessWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.auto_awesome,
-                        color: Colors.white, size: 18),
+                    const Icon(
+                      Icons.auto_awesome,
+                      color: Colors.white,
+                      size: 18,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -325,10 +326,7 @@ class _WrappedMetric extends StatelessWidget {
   final String label;
   final String value;
 
-  const _WrappedMetric({
-    required this.label,
-    required this.value,
-  });
+  const _WrappedMetric({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {

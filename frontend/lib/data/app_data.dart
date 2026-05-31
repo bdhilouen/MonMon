@@ -2,12 +2,7 @@ import '../models/transaction.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
-List<String> categories = [
-  "Makan",
-  "Transport",
-  "Hiburan",
-  "Lainnya",
-];
+List<String> categories = ["Makan", "Transport", "Hiburan", "Lainnya"];
 
 List<Transaction> transaksi = [];
 
@@ -71,19 +66,13 @@ Future<void> saveData() async {
 
   await prefs.setString('lastOpenDate', lastOpenDate);
 
-  await prefs.setStringList(
-    'categories',
-    categories,
-  );
+  await prefs.setStringList('categories', categories);
 
   List<String> transaksiJson = transaksi.map((t) {
     return jsonEncode(t.toJson());
   }).toList();
 
-  await prefs.setStringList(
-    'transaksi',
-    transaksiJson,
-  );
+  await prefs.setStringList('transaksi', transaksiJson);
 }
 
 Future<void> loadData() async {
@@ -97,19 +86,11 @@ Future<void> loadData() async {
 
   categories =
       prefs.getStringList('categories') ??
-          [
-            "Makan",
-            "Transport",
-            "Hiburan",
-            "Lainnya",
-          ];
+      ["Makan", "Transport", "Hiburan", "Lainnya"];
 
-  List<String> transaksiJson =
-      prefs.getStringList('transaksi') ?? [];
+  List<String> transaksiJson = prefs.getStringList('transaksi') ?? [];
 
   transaksi = transaksiJson.map((item) {
-    return Transaction.fromJson(
-      jsonDecode(item),
-    );
+    return Transaction.fromJson(jsonDecode(item));
   }).toList();
 }

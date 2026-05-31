@@ -38,7 +38,8 @@ class Achievement {
           ? DateTime.tryParse(json['unlocked_at'].toString())
           : null,
       progressCurrent: (json['progress_current'] as num?)?.toDouble() ?? 0.0,
-      progressTarget: (json['progress_target'] as num?)?.toDouble() ??
+      progressTarget:
+          (json['progress_target'] as num?)?.toDouble() ??
           (json['condition_value'] as num?)?.toDouble() ??
           0.0,
       progressPercentage:

@@ -33,10 +33,7 @@ class _OTPVerificationPageState extends State<OTPVerificationPage> {
       _successMessage = null;
     });
 
-    final result = await AuthService.verifyOTP(
-      email: widget.email,
-      otp: otp,
-    );
+    final result = await AuthService.verifyOTP(email: widget.email, otp: otp);
 
     if (!mounted) return;
 
@@ -126,19 +123,13 @@ class _OTPVerificationPageState extends State<OTPVerificationPage> {
               const Text(
                 'Cek Email Kamu',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               Text(
                 'Kami telah mengirim kode OTP 6 digit ke\n${widget.email}',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey.shade600,
-                ),
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
               ),
               const SizedBox(height: 32),
 
@@ -171,8 +162,10 @@ class _OTPVerificationPageState extends State<OTPVerificationPage> {
                   ),
                   child: Text(
                     _successMessage!,
-                    style:
-                        TextStyle(color: Colors.green.shade700, fontSize: 13),
+                    style: TextStyle(
+                      color: Colors.green.shade700,
+                      fontSize: 13,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                 ),

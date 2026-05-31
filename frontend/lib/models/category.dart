@@ -22,18 +22,13 @@ class Category {
       id: json['_id']?.toString() ?? json['id']?.toString() ?? '',
       userId: json['user_id']?.toString(),
       name: json['name'] ?? '',
-      icon: json['icon'] ?? '📦',
+      icon: json['icon'] ?? 'category',
       color: json['color'] ?? '#999999',
       type: json['type'] ?? 'expense',
     );
   }
 
   Map<String, dynamic> toJson() {
-    return {
-      'name': name,
-      'icon': icon,
-      'color': color,
-      'type': type,
-    };
+    return {'name': name, 'icon': icon, 'color': color, 'type': type};
   }
 }

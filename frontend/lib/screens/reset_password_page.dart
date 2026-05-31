@@ -7,10 +7,7 @@ import 'login_page.dart';
 class ResetPasswordPage extends StatefulWidget {
   final String initialEmail;
 
-  const ResetPasswordPage({
-    super.key,
-    required this.initialEmail,
-  });
+  const ResetPasswordPage({super.key, required this.initialEmail});
 
   @override
   State<ResetPasswordPage> createState() => _ResetPasswordPageState();
@@ -47,7 +44,11 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
       return;
     }
     if (password.isEmpty || confirmation.isEmpty) {
-      showAppSnack(context, 'Password dan konfirmasi wajib diisi', success: false);
+      showAppSnack(
+        context,
+        'Password dan konfirmasi wajib diisi',
+        success: false,
+      );
       return;
     }
     if (password.length < 8) {
@@ -112,7 +113,11 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.info_outline, color: Colors.blue.shade700, size: 20),
+                    Icon(
+                      Icons.info_outline,
+                      color: Colors.blue.shade700,
+                      size: 20,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
@@ -190,7 +195,9 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                   prefixIcon: const Icon(Icons.lock_outline),
                   suffixIcon: IconButton(
                     icon: Icon(
-                      _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                      _obscurePassword
+                          ? Icons.visibility_off
+                          : Icons.visibility,
                     ),
                     onPressed: () =>
                         setState(() => _obscurePassword = !_obscurePassword),

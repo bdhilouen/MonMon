@@ -22,7 +22,9 @@ class MonthlyWrapped {
   });
 
   factory MonthlyWrapped.fromJson(
-      Map<String, dynamic> dataJson, List<dynamic>? insightsJson) {
+    Map<String, dynamic> dataJson,
+    List<dynamic>? insightsJson,
+  ) {
     return MonthlyWrapped(
       id: dataJson['_id']?.toString() ?? dataJson['id']?.toString() ?? '',
       month: dataJson['month'] ?? '',
@@ -30,8 +32,7 @@ class MonthlyWrapped {
       totalExpense: (dataJson['total_expense'] as num?)?.toDouble() ?? 0.0,
       savingRate: (dataJson['saving_rate'] as num?)?.toDouble() ?? 0.0,
       topCategory: dataJson['top_category'],
-      totalTransactions:
-          (dataJson['total_transactions'] as num?)?.toInt() ?? 0,
+      totalTransactions: (dataJson['total_transactions'] as num?)?.toInt() ?? 0,
       streak: (dataJson['streak'] as num?)?.toInt() ?? 0,
       insights: insightsJson?.map((e) => e.toString()).toList() ?? [],
     );

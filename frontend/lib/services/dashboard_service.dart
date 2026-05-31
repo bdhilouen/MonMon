@@ -8,8 +8,10 @@ class DashboardService {
     final queryParams = <String, String>{};
     if (month != null) queryParams['month'] = month;
 
-    final response =
-        await ApiService.get('/dashboard', queryParams: queryParams);
+    final response = await ApiService.get(
+      '/dashboard',
+      queryParams: queryParams,
+    );
     if (response.success && response.data != null) {
       return DashboardData.fromJson(response.data);
     }
@@ -22,11 +24,14 @@ class DashboardService {
     required String endDate,
     String groupBy = 'day',
   }) async {
-    final response = await ApiService.get('/dashboard/chart', queryParams: {
-      'start_date': startDate,
-      'end_date': endDate,
-      'group_by': groupBy,
-    });
+    final response = await ApiService.get(
+      '/dashboard/chart',
+      queryParams: {
+        'start_date': startDate,
+        'end_date': endDate,
+        'group_by': groupBy,
+      },
+    );
 
     if (response.success && response.data != null) {
       return ChartDataResponse.fromJson(response.data);

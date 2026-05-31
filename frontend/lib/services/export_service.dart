@@ -1,6 +1,9 @@
-import 'dart:io';
-import 'package:path_provider/path_provider.dart';
 import 'api_service.dart';
+
+// Conditional imports for web vs native
+import 'export_service_native.dart'
+    if (dart.library.js_interop) 'export_service_web.dart'
+    as platform_export;
 
 class ExportService {
   // Export CSV
@@ -9,30 +12,23 @@ class ExportService {
     required String endDate,
   }) async {
     try {
-      final response = await ApiService.download('/export/csv', queryParams: {
-        'start_date': startDate,
-        'end_date': endDate,
-      });
+      final response = await ApiService.download(
+        '/export/csv',
+        queryParams: {'start_date': startDate, 'end_date': endDate},
+      );
 
       if (response != null) {
-        final directory = await getApplicationDocumentsDirectory();
         final fileName =
             'monmon_transactions_${DateTime.now().toString().split(' ')[0]}.csv';
-        final file = File('${directory.path}/$fileName');
-        await file.writeAsBytes(response.bodyBytes);
 
-        return (
-          success: true,
-          message: 'CSV berhasil diexport: $fileName',
-          filePath: file.path,
+        return platform_export.saveFile(
+          bytes: response.bodyBytes,
+          fileName: fileName,
+          mimeType: 'text/csv',
         );
       }
 
-      return (
-        success: false,
-        message: 'Gagal mengexport CSV',
-        filePath: null,
-      );
+      return (success: false, message: 'Gagal mengexport CSV', filePath: null);
     } catch (e) {
       return (
         success: false,
@@ -48,30 +44,23 @@ class ExportService {
     required String endDate,
   }) async {
     try {
-      final response = await ApiService.download('/export/pdf', queryParams: {
-        'start_date': startDate,
-        'end_date': endDate,
-      });
+      final response = await ApiService.download(
+        '/export/pdf',
+        queryParams: {'start_date': startDate, 'end_date': endDate},
+      );
 
       if (response != null) {
-        final directory = await getApplicationDocumentsDirectory();
         final fileName =
             'monmon_report_${DateTime.now().toString().split(' ')[0]}.pdf';
-        final file = File('${directory.path}/$fileName');
-        await file.writeAsBytes(response.bodyBytes);
 
-        return (
-          success: true,
-          message: 'PDF berhasil diexport: $fileName',
-          filePath: file.path,
+        return platform_export.saveFile(
+          bytes: response.bodyBytes,
+          fileName: fileName,
+          mimeType: 'application/pdf',
         );
       }
 
-      return (
-        success: false,
-        message: 'Gagal mengexport PDF',
-        filePath: null,
-      );
+      return (success: false, message: 'Gagal mengexport PDF', filePath: null);
     } catch (e) {
       return (
         success: false,

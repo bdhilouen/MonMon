@@ -77,10 +77,7 @@ class AppErrorState extends StatelessWidget {
               style: TextStyle(color: Colors.grey.shade700),
             ),
             const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: onRetry,
-              child: const Text('Coba Lagi'),
-            ),
+            ElevatedButton(onPressed: onRetry, child: const Text('Coba Lagi')),
           ],
         ),
       ),
@@ -137,11 +134,7 @@ class AppStatCard extends StatelessWidget {
   }
 }
 
-void showAppSnack(
-  BuildContext context,
-  String message, {
-  bool success = true,
-}) {
+void showAppSnack(BuildContext context, String message, {bool success = true}) {
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
       content: Text(message),

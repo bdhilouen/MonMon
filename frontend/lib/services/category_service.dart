@@ -3,16 +3,19 @@ import 'api_service.dart';
 
 class CategoryService {
   // Get all categories (grouped by type)
-  static Future<({List<Category> income, List<Category> expense})> getAll() async {
+  static Future<({List<Category> income, List<Category> expense})>
+  getAll() async {
     final response = await ApiService.get('/categories');
     if (response.success && response.data != null) {
       final data = response.data as Map<String, dynamic>;
 
-      final incomeList = (data['income'] as List?)
+      final incomeList =
+          (data['income'] as List?)
               ?.map((c) => Category.fromJson(c))
               .toList() ??
           [];
-      final expenseList = (data['expense'] as List?)
+      final expenseList =
+          (data['expense'] as List?)
               ?.map((c) => Category.fromJson(c))
               .toList() ??
           [];
@@ -35,12 +38,10 @@ class CategoryService {
     required String color,
     required String type,
   }) async {
-    final response = await ApiService.post('/categories', body: {
-      'name': name,
-      'icon': icon,
-      'color': color,
-      'type': type,
-    });
+    final response = await ApiService.post(
+      '/categories',
+      body: {'name': name, 'icon': icon, 'color': color, 'type': type},
+    );
 
     if (response.success && response.data != null) {
       return (

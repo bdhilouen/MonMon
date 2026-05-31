@@ -24,9 +24,7 @@ class _WebMainPageState extends State<WebMainPage> {
 
   List<Widget> get pages {
     return [
-      HomePage(
-        onTabChange: changePage,
-      ),
+      HomePage(onTabChange: changePage),
       const TransactionPage(),
       const ReportPage(),
       const ProfilePage(),
@@ -34,30 +32,16 @@ class _WebMainPageState extends State<WebMainPage> {
   }
 
   final List<_WebMenuItem> menuItems = const [
-    _WebMenuItem(
-      title: "Beranda",
-      icon: Icons.home,
-    ),
-    _WebMenuItem(
-      title: "Transaksi",
-      icon: Icons.receipt_long,
-    ),
-    _WebMenuItem(
-      title: "Laporan",
-      icon: Icons.bar_chart,
-    ),
-    _WebMenuItem(
-      title: "Profil",
-      icon: Icons.person,
-    ),
+    _WebMenuItem(title: "Beranda", icon: Icons.home),
+    _WebMenuItem(title: "Transaksi", icon: Icons.receipt_long),
+    _WebMenuItem(title: "Laporan", icon: Icons.bar_chart),
+    _WebMenuItem(title: "Profil", icon: Icons.person),
   ];
 
   Future<void> openAddTransactionPage() async {
     await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => const AddTransactionPage(),
-      ),
+      MaterialPageRoute(builder: (context) => const AddTransactionPage()),
     );
 
     setState(() {});
@@ -104,10 +88,7 @@ class _WebMainPageState extends State<WebMainPage> {
                     padding: EdgeInsets.symmetric(horizontal: 24),
                     child: Text(
                       "Money Monitoring Dashboard",
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                      ),
+                      style: TextStyle(color: Colors.white70, fontSize: 12),
                     ),
                   ),
 
@@ -142,9 +123,7 @@ class _WebMainPageState extends State<WebMainPage> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.white,
                         foregroundColor: Colors.blue.shade700,
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 16,
-                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
@@ -172,10 +151,7 @@ class _WebMenuItem {
   final String title;
   final IconData icon;
 
-  const _WebMenuItem({
-    required this.title,
-    required this.icon,
-  });
+  const _WebMenuItem({required this.title, required this.icon});
 }
 
 class _SidebarMenuTile extends StatelessWidget {
@@ -204,24 +180,16 @@ class _SidebarMenuTile extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(16),
           child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 14,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Row(
               children: [
-                Icon(
-                  icon,
-                  color: Colors.white,
-                  size: 22,
-                ),
+                Icon(icon, color: Colors.white, size: 22),
                 const SizedBox(width: 12),
                 Text(
                   title,
                   style: TextStyle(
                     color: Colors.white,
-                    fontWeight:
-                    isSelected ? FontWeight.bold : FontWeight.w500,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                   ),
                 ),
               ],

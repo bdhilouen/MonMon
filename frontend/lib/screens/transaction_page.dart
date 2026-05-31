@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../data/app_data.dart';
 import '../models/transaction.dart';
+import '../services/transaction_service.dart';
+import '../services/app_refresh_service.dart';
+import '../utils/category_icons.dart';
 import '../utils/formatter.dart';
+import '../widgets/delete_confirmation_dialog.dart';
+import '../widgets/responsive_content.dart';
+import 'home_page.dart' show getCategoryColor, getCategoryColorFromHex;
 
 class TransactionPage extends StatefulWidget {
   const TransactionPage({super.key});
@@ -16,22 +21,28 @@ class _TransactionPageState extends State<TransactionPage> {
   final TextEditingController searchController = TextEditingController();
 
   String searchQuery = "";
+  bool _isLoading = true;
+  List<Transaction> _allTransactions = [];
 
-  Color getCategoryColor(String category) {
-    switch (category) {
-      case "Makan":
-        return Colors.orange;
-      case "Transport":
-        return Colors.blue;
-      case "Hiburan":
-        return Colors.purple;
-      case "Lainnya":
-        return Colors.grey;
-      case "Pemasukan":
-        return Colors.green;
-      default:
-        return Colors.blueGrey;
-    }
+  @override
+  void initState() {
+    super.initState();
+    _loadTransactions();
+    AppRefreshService.transactionsVersion.addListener(_onDataChanged);
+  }
+
+  void _onDataChanged() {
+    _loadTransactions();
+  }
+
+  Future<void> _loadTransactions() async {
+    final transactions = await TransactionService.getAll();
+    if (!mounted) return;
+
+    setState(() {
+      _allTransactions = transactions;
+      _isLoading = false;
+    });
   }
 
   IconData getCategoryIcon(String category) {
@@ -53,53 +64,39 @@ class _TransactionPageState extends State<TransactionPage> {
 
   int getTotalIncome() {
     int total = 0;
-
-    for (var t in transaksi) {
-      if (t.isIncome) {
-        total += t.amount.toInt();
-      }
+    for (var t in _allTransactions) {
+      if (t.isIncome) total += t.amount.toInt();
     }
-
     return total;
   }
 
   int getTotalExpense() {
     int total = 0;
-
-    for (var t in transaksi) {
-      if (!t.isIncome) {
-        total += t.amount.toInt();
-      }
+    for (var t in _allTransactions) {
+      if (!t.isIncome) total += t.amount.toInt();
     }
-
     return total;
   }
 
   List<Transaction> getFilteredTransactions() {
     if (searchQuery.trim().isEmpty) {
-      return transaksi.reversed.toList();
+      return _allTransactions;
     }
-
-    return transaksi
-        .where((t) {
-      return t.title.toLowerCase().contains(
-        searchQuery.toLowerCase(),
-      ) ||
-          t.category.toLowerCase().contains(
-            searchQuery.toLowerCase(),
-          );
-    })
-        .toList()
-        .reversed
-        .toList();
+    return _allTransactions.where((t) {
+      return t.title.toLowerCase().contains(searchQuery.toLowerCase()) ||
+          t.category.toLowerCase().contains(searchQuery.toLowerCase());
+    }).toList();
   }
 
   void editTransaction(Transaction transaction) {
-    final TextEditingController editTitle =
-    TextEditingController(text: transaction.title);
+    if (transaction.id == null) return;
 
-    final TextEditingController editAmount =
-    TextEditingController(text: transaction.amount.toString());
+    final TextEditingController editTitle = TextEditingController(
+      text: transaction.title,
+    );
+    final TextEditingController editAmount = TextEditingController(
+      text: transaction.amount.toString(),
+    );
 
     showDialog(
       context: context,
@@ -111,59 +108,37 @@ class _TransactionPageState extends State<TransactionPage> {
             children: [
               TextField(
                 controller: editTitle,
-                decoration: const InputDecoration(
-                  labelText: "Nama transaksi",
-                ),
+                decoration: const InputDecoration(labelText: "Nama transaksi"),
               ),
-
               const SizedBox(height: 10),
-
               TextField(
                 controller: editAmount,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: "Nominal",
-                ),
+                decoration: const InputDecoration(labelText: "Nominal"),
               ),
             ],
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
+              onPressed: () => Navigator.pop(context),
               child: const Text("Batal"),
             ),
-
             TextButton(
-              onPressed: () {
-                final int newAmount =
-                    int.tryParse(editAmount.text.trim()) ?? 0;
-
-                if (editTitle.text.trim().isEmpty || newAmount <= 0) {
-                  return;
-                }
-
-                setState(() {
-                  if (transaction.isIncome) {
-                    saldo -= transaction.amount.toInt();
-                  } else {
-                    saldo += transaction.amount.toInt();
-                  }
-
-                  transaction.title = editTitle.text.trim();
-                  transaction.amount = newAmount;
-
-                  if (transaction.isIncome) {
-                    saldo += newAmount;
-                  } else {
-                    saldo -= newAmount;
-                  }
-
-                  saveData();
-                });
+              onPressed: () async {
+                final int newAmount = int.tryParse(editAmount.text.trim()) ?? 0;
+                if (editTitle.text.trim().isEmpty || newAmount <= 0) return;
 
                 Navigator.pop(context);
+
+                final result = await TransactionService.update(
+                  transaction.id!,
+                  note: editTitle.text.trim(),
+                  amount: newAmount.toDouble(),
+                );
+
+                if (result.success) {
+                  AppRefreshService.notifyTransactionsChanged();
+                }
               },
               child: const Text("Simpan"),
             ),
@@ -173,160 +148,166 @@ class _TransactionPageState extends State<TransactionPage> {
     );
   }
 
-  void deleteTransaction(Transaction transaction) {
-    setState(() {
-      if (transaction.isIncome) {
-        saldo -= transaction.amount.toInt();
-      } else {
-        saldo += transaction.amount.toInt();
-      }
+  void deleteTransaction(Transaction transaction) async {
+    if (transaction.id == null) return;
 
-      transaksi.remove(transaction);
-      saveData();
-    });
+    final confirmed = await showDeleteConfirmationDialog(
+      context,
+      title: "Hapus Transaksi?",
+      message: "Transaksi \"${transaction.title}\" akan dihapus permanen.",
+    );
+    if (!confirmed || !mounted) return;
+
+    final result = await TransactionService.delete(transaction.id!);
+    if (result.success) {
+      AppRefreshService.notifyTransactionsChanged();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     final filteredTransactions = getFilteredTransactions();
     final bool isSearching = searchQuery.trim().isNotEmpty;
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      appBar: AppBar(
-        title: const Text("Transaksi"),
-        elevation: 0,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
+      appBar: AppBar(title: const Text("Transaksi"), elevation: 0),
+      body: RefreshIndicator(
+        onRefresh: _loadTransactions,
+        child: ResponsiveContent(
+          maxWidth: 920,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: _SummaryCard(
-                    title: "Pemasukan",
-                    value: formatRupiah(getTotalIncome()),
-                    icon: Icons.arrow_downward,
-                    color: Colors.green,
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _SummaryCard(
+                        title: "Pemasukan",
+                        value: formatRupiah(getTotalIncome()),
+                        icon: Icons.arrow_downward,
+                        color: Colors.green,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _SummaryCard(
+                        title: "Pengeluaran",
+                        value: formatRupiah(getTotalExpense()),
+                        icon: Icons.arrow_upward,
+                        color: Colors.red,
+                      ),
+                    ),
+                  ],
                 ),
 
-                const SizedBox(width: 10),
+                const SizedBox(height: 18),
 
-                Expanded(
-                  child: _SummaryCard(
-                    title: "Pengeluaran",
-                    value: formatRupiah(getTotalExpense()),
-                    icon: Icons.arrow_upward,
-                    color: Colors.red,
+                TextField(
+                  controller: searchController,
+                  decoration: InputDecoration(
+                    hintText: "Cari transaksi atau kategori...",
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: isSearching
+                        ? IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () {
+                              setState(() {
+                                searchController.clear();
+                                searchQuery = "";
+                              });
+                            },
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: Colors.grey.shade100,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 18),
-
-            TextField(
-              controller: searchController,
-              decoration: InputDecoration(
-                hintText: "Cari transaksi atau kategori...",
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: isSearching
-                    ? IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () {
+                  onChanged: (value) {
                     setState(() {
-                      searchController.clear();
-                      searchQuery = "";
+                      searchQuery = value;
                     });
                   },
-                )
-                    : null,
-                filled: true,
-                fillColor: Colors.grey.shade100,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 14,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-              onChanged: (value) {
-                setState(() {
-                  searchQuery = value;
-                });
-              },
-            ),
-
-            const SizedBox(height: 18),
-
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  isSearching ? "Hasil Pencarian" : "Daftar Transaksi",
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
                 ),
 
-                Text(
-                  "${filteredTransactions.length} item",
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 12,
-                  ),
+                const SizedBox(height: 18),
+
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      isSearching ? "Hasil Pencarian" : "Daftar Transaksi",
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      "${filteredTransactions.length} item",
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 12),
+
+                Expanded(
+                  child: _allTransactions.isEmpty
+                      ? const _EmptyState(
+                          icon: Icons.receipt_long,
+                          title: "Belum ada transaksi",
+                          subtitle:
+                              "Tambahkan transaksi pertama lewat tombol +.",
+                        )
+                      : filteredTransactions.isEmpty
+                      ? const _EmptyState(
+                          icon: Icons.search_off,
+                          title: "Transaksi tidak ditemukan",
+                          subtitle: "Coba cari nama atau kategori lain.",
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.only(bottom: 100),
+                          itemCount: filteredTransactions.length,
+                          itemBuilder: (context, index) {
+                            final transaction = filteredTransactions[index];
+
+                            return _TransactionItem(
+                              transaction: transaction,
+                              color: transaction.categoryColor != null
+                                  ? getCategoryColorFromHex(
+                                      transaction.categoryColor,
+                                    )
+                                  : getCategoryColor(transaction.category),
+                              icon: categoryIconFor(
+                                icon: transaction.categoryIcon,
+                                name: transaction.category,
+                                isIncome: transaction.isIncome,
+                              ),
+                              onTap: () => editTransaction(transaction),
+                              onDelete: () => deleteTransaction(transaction),
+                            );
+                          },
+                        ),
                 ),
               ],
             ),
-
-            const SizedBox(height: 12),
-
-            Expanded(
-              child: transaksi.isEmpty
-                  ? const _EmptyState(
-                icon: Icons.receipt_long,
-                title: "Belum ada transaksi",
-                subtitle:
-                "Tambahkan transaksi pertama lewat tombol +.",
-              )
-                  : filteredTransactions.isEmpty
-                  ? const _EmptyState(
-                icon: Icons.search_off,
-                title: "Transaksi tidak ditemukan",
-                subtitle: "Coba cari nama atau kategori lain.",
-              )
-                  : ListView.builder(
-                padding: const EdgeInsets.only(bottom: 100),
-                itemCount: filteredTransactions.length,
-                itemBuilder: (context, index) {
-                  final transaction =
-                  filteredTransactions[index];
-
-                  return _TransactionItem(
-                    transaction: transaction,
-                    color: getCategoryColor(
-                      transaction.category,
-                    ),
-                    icon: getCategoryIcon(
-                      transaction.category,
-                    ),
-                    onTap: () {
-                      editTransaction(transaction);
-                    },
-                    onDelete: () {
-                      deleteTransaction(transaction);
-                    },
-                  );
-                },
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -335,6 +316,7 @@ class _TransactionPageState extends State<TransactionPage> {
   @override
   void dispose() {
     searchController.dispose();
+    AppRefreshService.transactionsVersion.removeListener(_onDataChanged);
     super.dispose();
   }
 }
@@ -355,9 +337,7 @@ class _SummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: const BoxConstraints(
-        minHeight: 105,
-      ),
+      constraints: const BoxConstraints(minHeight: 105),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
@@ -366,24 +346,13 @@ class _SummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            icon,
-            color: color,
-            size: 22,
-          ),
-
+          Icon(icon, color: color, size: 22),
           const SizedBox(height: 10),
-
           Text(
             title,
-            style: TextStyle(
-              color: Colors.grey.shade700,
-              fontSize: 12,
-            ),
+            style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
           ),
-
           const SizedBox(height: 6),
-
           Text(
             value,
             maxLines: 1,
@@ -424,9 +393,7 @@ class _TransactionItem extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: Colors.grey.shade200,
-        ),
+        border: Border.all(color: Colors.grey.shade200),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -437,10 +404,7 @@ class _TransactionItem extends StatelessWidget {
       ),
       child: ListTile(
         onTap: onTap,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 8,
-        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         leading: Container(
           width: 42,
           height: 42,
@@ -458,18 +422,13 @@ class _TransactionItem extends StatelessWidget {
           transaction.title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         subtitle: Text(
           "${transaction.category} • ${DateFormat('dd MMM yyyy').format(transaction.date)}",
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: Colors.grey.shade600,
-            fontSize: 12,
-          ),
+          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
         ),
         trailing: SizedBox(
           width: 128,
@@ -489,18 +448,13 @@ class _TransactionItem extends StatelessWidget {
                   ),
                 ),
               ),
-
               const SizedBox(width: 4),
-
               IconButton(
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
                 onPressed: onDelete,
-                icon: const Icon(
-                  Icons.delete_outline,
-                  color: Colors.red,
-                ),
+                icon: const Icon(Icons.delete_outline, color: Colors.red),
               ),
             ],
           ),
@@ -533,30 +487,14 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 42,
-              color: Colors.grey.shade500,
-            ),
-
+            Icon(icon, size: 42, color: Colors.grey.shade500),
             const SizedBox(height: 12),
-
-            Text(
-              title,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-
+            Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
-
             Text(
               subtitle,
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                fontSize: 12,
-              ),
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
             ),
           ],
         ),

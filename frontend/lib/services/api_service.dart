@@ -45,17 +45,19 @@ class ApiService {
   }
 
   // GET request
-  static Future<ApiResponse> get(String endpoint,
-      {Map<String, String>? queryParams}) async {
+  static Future<ApiResponse> get(
+    String endpoint, {
+    Map<String, String>? queryParams,
+  }) async {
     try {
       var uri = Uri.parse('$baseUrl$endpoint');
       if (queryParams != null) {
         uri = uri.replace(queryParameters: queryParams);
       }
 
-      final response = await http.get(uri, headers: _headers).timeout(
-        const Duration(seconds: 30),
-      );
+      final response = await http
+          .get(uri, headers: _headers)
+          .timeout(const Duration(seconds: 30));
       return _handleResponse(response);
     } catch (e) {
       return ApiResponse(
@@ -67,8 +69,10 @@ class ApiService {
   }
 
   // POST request
-  static Future<ApiResponse> post(String endpoint,
-      {Map<String, dynamic>? body}) async {
+  static Future<ApiResponse> post(
+    String endpoint, {
+    Map<String, dynamic>? body,
+  }) async {
     try {
       final response = await http
           .post(
@@ -88,8 +92,10 @@ class ApiService {
   }
 
   // PUT request
-  static Future<ApiResponse> put(String endpoint,
-      {Map<String, dynamic>? body}) async {
+  static Future<ApiResponse> put(
+    String endpoint, {
+    Map<String, dynamic>? body,
+  }) async {
     try {
       final response = await http
           .put(
@@ -112,10 +118,7 @@ class ApiService {
   static Future<ApiResponse> delete(String endpoint) async {
     try {
       final response = await http
-          .delete(
-            Uri.parse('$baseUrl$endpoint'),
-            headers: _headers,
-          )
+          .delete(Uri.parse('$baseUrl$endpoint'), headers: _headers)
           .timeout(const Duration(seconds: 30));
       return _handleResponse(response);
     } catch (e) {
@@ -128,17 +131,19 @@ class ApiService {
   }
 
   // Download file (for export)
-  static Future<http.Response?> download(String endpoint,
-      {Map<String, String>? queryParams}) async {
+  static Future<http.Response?> download(
+    String endpoint, {
+    Map<String, String>? queryParams,
+  }) async {
     try {
       var uri = Uri.parse('$baseUrl$endpoint');
       if (queryParams != null) {
         uri = uri.replace(queryParameters: queryParams);
       }
 
-      final response = await http.get(uri, headers: _headers).timeout(
-        const Duration(seconds: 60),
-      );
+      final response = await http
+          .get(uri, headers: _headers)
+          .timeout(const Duration(seconds: 60));
 
       if (response.statusCode == 200) {
         return response;
@@ -158,7 +163,9 @@ class ApiService {
       if (response.statusCode == 422 && body['errors'] != null) {
         final errors = body['errors'] as Map<String, dynamic>;
         final firstError = errors.values.first;
-        final message = firstError is List ? firstError.first : firstError.toString();
+        final message = firstError is List
+            ? firstError.first
+            : firstError.toString();
         return ApiResponse(
           success: false,
           message: message,
@@ -168,7 +175,9 @@ class ApiService {
       }
 
       return ApiResponse(
-        success: body['success'] ?? (response.statusCode >= 200 && response.statusCode < 300),
+        success:
+            body['success'] ??
+            (response.statusCode >= 200 && response.statusCode < 300),
         message: body['message'] ?? '',
         data: body['data'],
         statusCode: response.statusCode,
