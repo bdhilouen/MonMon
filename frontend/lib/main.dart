@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'data/app_data.dart';
+import 'services/api_service.dart';
+import 'screens/login_page.dart';
 import 'screens/main_page.dart';
 import 'screens/web_main_page.dart';
 
@@ -10,6 +12,7 @@ void main() async {
 
   await loadData();
   await updateLoginStreak();
+  await ApiService.init();
 
   runApp(const MyApp());
 }
@@ -19,10 +22,29 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: ResponsiveRoot(),
+
+      home: const AuthGate(),
+
+      routes: {
+        '/login': (_) => const LoginPage(),
+        '/home': (_) => const ResponsiveRoot(),
+      },
     );
+  }
+}
+
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    if (ApiService.isLoggedIn) {
+      return const ResponsiveRoot();
+    }
+
+    return const LoginPage();
   }
 }
 

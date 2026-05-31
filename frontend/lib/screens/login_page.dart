@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import 'register_page.dart';
-import 'main_page.dart';
 import 'otp_verification_page.dart';
 import 'forgot_password_page.dart';
 
@@ -40,10 +39,7 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _isLoading = false);
 
     if (result.success) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const MainPage()),
-      );
+      Navigator.pushReplacementNamed(context, '/home');
     } else if (result.message == 'EMAIL_NOT_VERIFIED') {
       Navigator.push(
         context,
