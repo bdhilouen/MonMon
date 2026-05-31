@@ -29,7 +29,7 @@ class MyApp extends StatelessWidget {
 
       routes: {
         '/login': (_) => const LoginPage(),
-        '/home': (_) => const ResponsiveRoot(),
+        '/home': (_) => const ProtectedHome(),
       },
     );
   }
@@ -37,6 +37,19 @@ class MyApp extends StatelessWidget {
 
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    if (ApiService.isLoggedIn) {
+      return const ResponsiveRoot();
+    }
+
+    return const LoginPage();
+  }
+}
+
+class ProtectedHome extends StatelessWidget {
+  const ProtectedHome({super.key});
 
   @override
   Widget build(BuildContext context) {
