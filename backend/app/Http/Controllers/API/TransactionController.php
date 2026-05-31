@@ -9,14 +9,19 @@ use App\Services\AchievementService;
 use App\Services\CacheService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use App\Services\LevellingService;
 
 class TransactionController extends Controller
 {
     protected $achievementService;
+    protected $levellingService;
 
-    public function __construct(AchievementService $achievementService)
-    {
+    public function __construct(
+        AchievementService $achievementService,
+        LevellingService $levellingService
+    ) {
         $this->achievementService = $achievementService;
+        $this->levellingService = $levellingService;
     }
 
     public function index(Request $request)
@@ -96,16 +101,26 @@ class TransactionController extends Controller
 
         // Update user balance & points
         $user = $request->user();
-        if ($data['type'] === 'income') {
-            $user->balance += $data['amount'];
-            $user->points += 5;
-        } else {
-            $user->balance -= $data['amount'];
-            $user->points += 2;
-        }
-        $user->save();
+
+        // ✅ Ganti manual points dengan LevellingService
+        $action = $data['type'] === 'income'
+            ? 'transaction_income'
+            : 'transaction_expense';
+
+        $pointsInfo = $this->levellingService->addPoints($user, $action);
+
+        // Refresh user setelah points update
+        $user = $user->fresh();
 
         $newAchievements = $this->achievementService->checkAndUnlockAchievements($user);
+
+        // ✅ Add achievement points kalau ada yang unlock
+        if (!empty($newAchievements)) {
+            foreach ($newAchievements as $achievement) {
+                $this->levellingService->addPoints($user, 'achievement_unlock');
+            }
+            $user = $user->fresh();
+        }
 
         CacheService::clearUserCache($user->id, [
             CacheService::monthFromDate($transaction->date),
@@ -115,6 +130,7 @@ class TransactionController extends Controller
             'success' => true,
             'message' => 'Transaction created successfully',
             'data' => $transaction,
+            'points_info' => $pointsInfo,       // ✅ Info poin
             'new_achievements' => $newAchievements,
         ], 201);
     }

@@ -88,73 +88,206 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     }
   }
 
+  Future<String?> _showIconPickerSheet(String currentKey) {
+    return showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'Pilih Icon',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 14),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 4,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                ),
+                itemCount: kPickableIcons.length,
+                itemBuilder: (_, index) {
+                  final key = kPickableIcons.keys.elementAt(index);
+                  final iconData = kPickableIcons[key]!;
+                  final isSelected = key == currentKey;
+
+                  return GestureDetector(
+                    onTap: () => Navigator.pop(sheetContext, key),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? Colors.blue.withValues(alpha: 0.15)
+                            : Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: isSelected ? Colors.blue : Colors.transparent,
+                          width: 2,
+                        ),
+                      ),
+                      child: Icon(
+                        iconData,
+                        color:
+                            isSelected ? Colors.blue : Colors.grey.shade700,
+                        size: 28,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   void showAddCategoryDialog() {
     final TextEditingController categoryController = TextEditingController();
+    String selectedIconKey = defaultCategoryIconKey(
+      isIncome ? 'income' : 'expense',
+    );
 
     showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text("Tambah Kategori"),
-          content: TextField(
-            controller: categoryController,
-            textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(
-              labelText: "Nama kategori",
-              hintText: "Contoh: Kuliah",
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Batal"),
-            ),
-            TextButton(
-              onPressed: () async {
-                final newCategoryName = categoryController.text.trim();
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              title: const Text("Tambah Kategori"),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: categoryController,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(
+                      labelText: "Nama kategori",
+                      hintText: "Contoh: Kuliah",
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  // Icon picker row
+                  Row(
+                    children: [
+                      Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: Colors.blue.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Icon(
+                          iconDataFor(selectedIconKey),
+                          color: Colors.blue,
+                          size: 26,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final picked = await _showIconPickerSheet(
+                              selectedIconKey,
+                            );
+                            if (picked != null) {
+                              setDialogState(() => selectedIconKey = picked);
+                            }
+                          },
+                          icon: const Icon(Icons.grid_view_rounded, size: 18),
+                          label: const Text('Pilih Icon'),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text("Batal"),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    final newCategoryName = categoryController.text.trim();
 
-                if (newCategoryName.isEmpty) {
-                  Navigator.pop(context);
-                  showMessage("Nama kategori tidak boleh kosong");
-                  return;
-                }
+                    if (newCategoryName.isEmpty) {
+                      showMessage("Nama kategori tidak boleh kosong");
+                      return;
+                    }
 
-                // Check if already exists
-                final alreadyExists = _currentCategories.any(
-                  (cat) =>
-                      cat.name.toLowerCase() == newCategoryName.toLowerCase(),
-                );
+                    final alreadyExists = _currentCategories.any(
+                      (cat) =>
+                          cat.name.toLowerCase() ==
+                          newCategoryName.toLowerCase(),
+                    );
 
-                if (alreadyExists) {
-                  Navigator.pop(context);
-                  showMessage("Kategori itu sudah ada");
-                  return;
-                }
+                    if (alreadyExists) {
+                      showMessage("Kategori itu sudah ada");
+                      return;
+                    }
 
-                Navigator.pop(context);
+                    Navigator.pop(dialogContext);
 
-                final result = await CategoryService.create(
-                  name: newCategoryName,
-                  icon: defaultCategoryIconKey(isIncome ? 'income' : 'expense'),
-                  color: '#607D8B',
-                  type: isIncome ? 'income' : 'expense',
-                );
+                    final result = await CategoryService.create(
+                      name: newCategoryName,
+                      icon: selectedIconKey,
+                      color: '#607D8B',
+                      type: isIncome ? 'income' : 'expense',
+                    );
 
-                if (result.success && result.category != null) {
-                  await _loadCategories();
-                  if (mounted) {
-                    setState(() {
-                      _selectedCategory = result.category;
-                    });
-                    showMessage("Kategori berhasil ditambahkan");
-                  }
-                } else {
-                  showMessage(result.message);
-                }
-              },
-              child: const Text("Tambah"),
-            ),
-          ],
+                    if (result.success && result.category != null) {
+                      await _loadCategories();
+                      if (mounted) {
+                        setState(() => _selectedCategory = result.category);
+                        showMessage("Kategori berhasil ditambahkan");
+                      }
+                    } else {
+                      showMessage(result.message);
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text("Tambah"),
+                ),
+              ],
+            );
+          },
         );
       },
     );

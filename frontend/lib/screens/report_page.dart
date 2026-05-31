@@ -7,6 +7,9 @@ import '../services/app_refresh_service.dart';
 import '../utils/formatter.dart';
 import '../widgets/responsive_content.dart';
 import 'home_page.dart' show getCategoryColorFromHex;
+import 'package:intl/intl.dart';
+import '../services/export_service.dart';
+import 'monthly_wrapped_page.dart';
 
 class ReportPage extends StatefulWidget {
   const ReportPage({super.key});
@@ -17,12 +20,19 @@ class ReportPage extends StatefulWidget {
 
 class _ReportPageState extends State<ReportPage> {
   bool _isLoading = true;
+  bool _isExporting = false;
   ChartDataResponse? _chartData;
   int _totalExpense = 0;
+
+  late DateTime _startDate;
+  late DateTime _endDate;
 
   @override
   void initState() {
     super.initState();
+    final now = DateTime.now();
+    _startDate = DateTime(now.year, now.month, 1);
+    _endDate = DateTime(now.year, now.month + 1, 0);
     _loadData();
     AppRefreshService.transactionsVersion.addListener(_onDataChanged);
   }
@@ -32,18 +42,8 @@ class _ReportPageState extends State<ReportPage> {
   }
 
   Future<void> _loadData() async {
-    // Get chart data for current month
-    final now = DateTime.now();
-    final startDate = DateTime(
-      now.year,
-      now.month,
-      1,
-    ).toIso8601String().split('T')[0];
-    final endDate = DateTime(
-      now.year,
-      now.month + 1,
-      0,
-    ).toIso8601String().split('T')[0];
+    final startDate = _startDate.toIso8601String().split('T')[0];
+    final endDate = _endDate.toIso8601String().split('T')[0];
 
     final chartData = await DashboardService.getChartData(
       startDate: startDate,
@@ -71,6 +71,40 @@ class _ReportPageState extends State<ReportPage> {
     return getCategoryColorFromHex(cat.categoryColor);
   }
 
+  Future<void> _exportCSV() async {
+    setState(() => _isExporting = true);
+    final result = await ExportService.exportCSV(
+      startDate: DateFormat('yyyy-MM-dd').format(_startDate),
+      endDate: DateFormat('yyyy-MM-dd').format(_endDate),
+    );
+    if (!mounted) return;
+    setState(() => _isExporting = false);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result.message),
+        backgroundColor: result.success ? Colors.green : Colors.red,
+      ),
+    );
+  }
+
+  Future<void> _exportPDF() async {
+    setState(() => _isExporting = true);
+    final result = await ExportService.exportPDF(
+      startDate: DateFormat('yyyy-MM-dd').format(_startDate),
+      endDate: DateFormat('yyyy-MM-dd').format(_endDate),
+    );
+    if (!mounted) return;
+    setState(() => _isExporting = false);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result.message),
+        backgroundColor: result.success ? Colors.green : Colors.red,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -80,7 +114,24 @@ class _ReportPageState extends State<ReportPage> {
     final data = _chartData?.categoryBreakdown ?? [];
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Laporan"), elevation: 0),
+      appBar: AppBar(
+        title: const Text("Laporan"),
+        elevation: 0,
+        actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.download),
+            enabled: !_isExporting,
+            onSelected: (value) {
+              if (value == 'csv') _exportCSV();
+              if (value == 'pdf') _exportPDF();
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: 'csv', child: Text('Export CSV')),
+              const PopupMenuItem(value: 'pdf', child: Text('Export PDF')),
+            ],
+          ),
+        ],
+      ),
       body: data.isEmpty
           ? const _EmptyReport()
           : RefreshIndicator(
@@ -94,6 +145,21 @@ class _ReportPageState extends State<ReportPage> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       _TotalExpenseCard(totalExpense: _totalExpense),
+
+                      const SizedBox(height: 16),
+
+                      FilledButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const MonthlyWrappedPage(),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.auto_awesome),
+                        label: const Text('Monthly Wrapped'),
+                      ),
 
                       const SizedBox(height: 22),
 

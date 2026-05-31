@@ -71,12 +71,72 @@ IconData categoryIconFor({
       case 'category':
       case 'package':
         return Icons.category;
+      case 'home':
+        return Icons.home;
+      case 'local_cafe':
+      case 'coffee':
+      case 'kopi':
+        return Icons.local_cafe;
+      case 'directions_car':
+        return Icons.directions_car;
+      case 'flight':
+      case 'travel':
+        return Icons.flight;
+      case 'fitness_center':
+      case 'gym':
+        return Icons.fitness_center;
+      case 'pets':
+        return Icons.pets;
+      case 'child_care':
+        return Icons.child_care;
+      case 'phonelink':
+      case 'gadget':
+      case 'electronics':
+        return Icons.phonelink;
+      case 'build':
+      case 'repair':
+        return Icons.build;
+      case 'attach_money':
+      case 'bonus':
+        return Icons.attach_money;
     }
   }
 
   return isIncome == true || type == 'income' ? Icons.payments : Icons.sell;
 }
 
+/// Direct icon lookup by key (used by the icon picker).
+IconData iconDataFor(String key) {
+  return kPickableIcons[key] ?? Icons.category;
+}
+
 String defaultCategoryIconKey(String type) {
   return type == 'income' ? 'payments' : 'sell';
 }
+
+/// Curated list of icons available in the icon-picker.
+/// Key = string stored in DB / model; Value = IconData rendered in UI.
+const Map<String, IconData> kPickableIcons = {
+  'restaurant': Icons.restaurant,
+  'local_cafe': Icons.local_cafe,
+  'shopping_bag': Icons.shopping_bag,
+  'directions_bus': Icons.directions_bus,
+  'directions_car': Icons.directions_car,
+  'flight': Icons.flight,
+  'home': Icons.home,
+  'school': Icons.school,
+  'local_hospital': Icons.local_hospital,
+  'fitness_center': Icons.fitness_center,
+  'sports_esports': Icons.sports_esports,
+  'pets': Icons.pets,
+  'child_care': Icons.child_care,
+  'phonelink': Icons.phonelink,
+  'build': Icons.build,
+  'receipt_long': Icons.receipt_long,
+  'payments': Icons.payments,
+  'savings': Icons.savings,
+  'attach_money': Icons.attach_money,
+  'account_balance_wallet': Icons.account_balance_wallet,
+  'sell': Icons.sell,
+  'more_horiz': Icons.more_horiz,
+};

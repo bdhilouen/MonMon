@@ -79,9 +79,86 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  /// Shows a bottom sheet GridView for picking a Material icon key.
+  Future<String?> showIconPickerSheet(BuildContext context, String currentKey) {
+    return showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'Pilih Icon',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 14),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 4,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                ),
+                itemCount: kPickableIcons.length,
+                itemBuilder: (_, index) {
+                  final key = kPickableIcons.keys.elementAt(index);
+                  final iconData = kPickableIcons[key]!;
+                  final isSelected = key == currentKey;
+
+                  return GestureDetector(
+                    onTap: () => Navigator.pop(sheetContext, key),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? Colors.blue.withValues(alpha: 0.15)
+                            : Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: isSelected
+                              ? Colors.blue
+                              : Colors.transparent,
+                          width: 2,
+                        ),
+                      ),
+                      child: Icon(
+                        iconData,
+                        color: isSelected ? Colors.blue : Colors.grey.shade700,
+                        size: 28,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   void showAddCategoryDialog(BuildContext context, StateSetter refreshSheet) {
     final TextEditingController categoryController = TextEditingController();
     String selectedType = 'expense';
+    String selectedIconKey = defaultCategoryIconKey('expense');
 
     showDialog(
       context: context,
@@ -89,6 +166,9 @@ class _ProfilePageState extends State<ProfilePage> {
         return StatefulBuilder(
           builder: (dialogContext, setDialogState) {
             return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
               title: const Text("Tambah Kategori"),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -101,15 +181,64 @@ class _ProfilePageState extends State<ProfilePage> {
                       hintText: "Contoh: Kuliah",
                     ),
                   ),
+                  const SizedBox(height: 14),
+                  // Icon picker row
+                  Row(
+                    children: [
+                      Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: Colors.blue.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Icon(
+                          iconDataFor(selectedIconKey),
+                          color: Colors.blue,
+                          size: 26,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final picked = await showIconPickerSheet(
+                              context,
+                              selectedIconKey,
+                            );
+                            if (picked != null) {
+                              setDialogState(() => selectedIconKey = picked);
+                            }
+                          },
+                          icon: const Icon(Icons.grid_view_rounded, size: 18),
+                          label: const Text('Pilih Icon'),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 12),
+                  // Type selector
                   Row(
                     children: [
                       Expanded(
                         child: ChoiceChip(
                           label: const Text("Pengeluaran"),
                           selected: selectedType == 'expense',
-                          onSelected: (_) =>
-                              setDialogState(() => selectedType = 'expense'),
+                          onSelected: (_) => setDialogState(() {
+                            selectedType = 'expense';
+                            if (selectedIconKey == 'payments') {
+                              selectedIconKey = 'sell';
+                            }
+                          }),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -117,8 +246,12 @@ class _ProfilePageState extends State<ProfilePage> {
                         child: ChoiceChip(
                           label: const Text("Pemasukan"),
                           selected: selectedType == 'income',
-                          onSelected: (_) =>
-                              setDialogState(() => selectedType = 'income'),
+                          onSelected: (_) => setDialogState(() {
+                            selectedType = 'income';
+                            if (selectedIconKey == 'sell') {
+                              selectedIconKey = 'payments';
+                            }
+                          }),
                         ),
                       ),
                     ],
@@ -130,7 +263,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   onPressed: () => Navigator.pop(dialogContext),
                   child: const Text("Batal"),
                 ),
-                TextButton(
+                ElevatedButton(
                   onPressed: () async {
                     final newCategory = categoryController.text.trim();
 
@@ -143,7 +276,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
                     final result = await CategoryService.create(
                       name: newCategory,
-                      icon: defaultCategoryIconKey(selectedType),
+                      icon: selectedIconKey,
                       color: '#607D8B',
                       type: selectedType,
                     );
@@ -156,6 +289,11 @@ class _ProfilePageState extends State<ProfilePage> {
                       showMessage(result.message);
                     }
                   },
+                  style: ElevatedButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
                   child: const Text("Tambah"),
                 ),
               ],
@@ -179,49 +317,114 @@ class _ProfilePageState extends State<ProfilePage> {
     final TextEditingController categoryController = TextEditingController(
       text: category.name,
     );
+    String selectedIconKey = category.icon;
 
     showDialog(
       context: context,
       builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text("Edit Kategori"),
-          content: TextField(
-            controller: categoryController,
-            textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(labelText: "Nama kategori baru"),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text("Batal"),
-            ),
-            TextButton(
-              onPressed: () async {
-                final newName = categoryController.text.trim();
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              title: const Text("Edit Kategori"),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: categoryController,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(
+                      labelText: "Nama kategori baru",
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  // Icon picker row
+                  Row(
+                    children: [
+                      Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: Colors.blue.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Icon(
+                          iconDataFor(selectedIconKey),
+                          color: Colors.blue,
+                          size: 26,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final picked = await showIconPickerSheet(
+                              context,
+                              selectedIconKey,
+                            );
+                            if (picked != null) {
+                              setDialogState(() => selectedIconKey = picked);
+                            }
+                          },
+                          icon: const Icon(Icons.grid_view_rounded, size: 18),
+                          label: const Text('Ganti Icon'),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text("Batal"),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    final newName = categoryController.text.trim();
 
-                if (newName.isEmpty) {
-                  showMessage("Nama kategori tidak boleh kosong");
-                  return;
-                }
+                    if (newName.isEmpty) {
+                      showMessage("Nama kategori tidak boleh kosong");
+                      return;
+                    }
 
-                Navigator.pop(dialogContext);
+                    Navigator.pop(dialogContext);
 
-                final result = await CategoryService.update(
-                  category.id,
-                  name: newName,
-                );
+                    final result = await CategoryService.update(
+                      category.id,
+                      name: newName,
+                      icon: selectedIconKey,
+                    );
 
-                if (result.success) {
-                  await _loadData();
-                  refreshSheet(() {});
-                  showMessage("Kategori berhasil diubah");
-                } else {
-                  showMessage(result.message);
-                }
-              },
-              child: const Text("Simpan"),
-            ),
-          ],
+                    if (result.success) {
+                      await _loadData();
+                      refreshSheet(() {});
+                      showMessage("Kategori berhasil diubah");
+                    } else {
+                      showMessage(result.message);
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text("Simpan"),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -568,6 +771,53 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  Future<void> _showLogoutConfirmation() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.logout, color: Colors.red, size: 22),
+              SizedBox(width: 10),
+              Text(
+                'Konfirmasi Logout',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          content: const Text(
+            'Apakah kamu yakin ingin keluar dari akun?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Batal'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text('Ya, Keluar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed == true) {
+      await _logout();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -588,44 +838,32 @@ class _ProfilePageState extends State<ProfilePage> {
               children: [
                 // User info card
                 Container(
-                  padding: const EdgeInsets.all(22),
+                  padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Colors.blue.shade700, Colors.blue.shade500],
-                    ),
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 16,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
+                    color: Colors.blue.shade700,
+                    borderRadius: BorderRadius.circular(20),
                   ),
                   child: Column(
                     children: [
                       CircleAvatar(
-                        radius: 36,
-                        backgroundColor: Colors.white.withValues(alpha: 0.2),
-                        child: Text(
-                          (_user?.name ?? 'U').substring(0, 1).toUpperCase(),
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
+                        radius: 38,
+                        backgroundColor: Colors.white,
+                        child: Icon(
+                          Icons.person,
+                          size: 46,
+                          color: Colors.blue.shade700,
                         ),
                       ),
                       const SizedBox(height: 14),
                       Text(
-                        _user?.name ?? 'User',
+                        _user?.name ?? 'Pengguna MonMon',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 6),
                       Text(
                         _user?.email ?? '',
                         style: const TextStyle(
@@ -633,30 +871,44 @@ class _ProfilePageState extends State<ProfilePage> {
                           fontSize: 14,
                         ),
                       ),
-                      const SizedBox(height: 18),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          _UserStat(
-                            label: "Saldo",
-                            value: formatRupiah(_user?.balance.toInt() ?? 0),
-                          ),
-                          _UserStat(
-                            label: "Level",
-                            value: "${_user?.level ?? 1}",
-                          ),
-                          _UserStat(
-                            label: "Streak",
-                            value: "${_user?.streak ?? 0} hari",
-                          ),
-                          _UserStat(
-                            label: "Poin",
-                            value: "${_user?.points ?? 0}",
-                          ),
-                        ],
-                      ),
                     ],
                   ),
+                ),
+                const SizedBox(height: 20),
+                // Stats cards
+                Row(
+                  children: [
+                    Expanded(
+                      child: _InfoCard(
+                        title: "Level",
+                        value: "${_user?.level ?? 1}",
+                        icon: Icons.star,
+                        color: Colors.amber,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _InfoCard(
+                        title: "Points",
+                        value: "${_user?.points ?? 0}",
+                        icon: Icons.emoji_events,
+                        color: Colors.orange,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _InfoCard(
+                        title: "Streak",
+                        value: "${_user?.streak ?? 0} hari",
+                        icon: Icons.local_fire_department,
+                        color: Colors.red,
+                      ),
+                    ),
+                  ],
                 ),
 
                 const SizedBox(height: 22),
@@ -777,11 +1029,77 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
 
+                const SizedBox(height: 14),
+
+                // App Info menu
+                InkWell(
+                  onTap: () {
+                    showAboutDialog(
+                      context: context,
+                      applicationName: 'MonMon',
+                      applicationVersion: '1.0.0',
+                      applicationIcon: const Icon(Icons.account_balance_wallet, size: 48, color: Colors.blue),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(18),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: Colors.green.withValues(alpha: 0.2),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 46,
+                          height: 46,
+                          decoration: BoxDecoration(
+                            color: Colors.green.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: const Icon(
+                            Icons.info_outline,
+                            color: Colors.green,
+                            size: 26,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                "Info Aplikasi",
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                "Tentang aplikasi MonMon",
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.chevron_right),
+                      ],
+                    ),
+                  ),
+                ),
+
                 const SizedBox(height: 30),
 
                 // Logout button
                 OutlinedButton.icon(
-                  onPressed: _logout,
+                  onPressed: _showLogoutConfirmation,
                   icon: const Icon(Icons.logout, color: Colors.red),
                   label: const Text(
                     "Logout",
@@ -811,30 +1129,53 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 }
 
-class _UserStat extends StatelessWidget {
-  final String label;
+class _InfoCard extends StatelessWidget {
+  final String title;
   final String value;
+  final IconData icon;
+  final Color color;
 
-  const _UserStat({required this.label, required this.value});
+  const _InfoCard({
+    required this.title,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: 14,
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 28),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: const TextStyle(color: Colors.white70, fontSize: 11),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

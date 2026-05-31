@@ -10,9 +10,17 @@ use Illuminate\Validation\ValidationException;
 use App\Models\EmailVerification;
 use App\Mail\OTPMail;
 use Illuminate\Support\Facades\Mail;
+use App\Services\LevellingService;
 
 class AuthController extends Controller
 {
+    protected $levellingService;
+
+    public function __construct(LevellingService $levellingService)
+    {
+        $this->levellingService = $levellingService;
+    }
+    
     public function register(Request $request)
     {
         $request->validate([
@@ -178,8 +186,8 @@ class AuthController extends Controller
             ], 403);
         }
 
-        // Update streak logic
-        $this->updateStreak($user);
+        // ✅ Handle streak dan poin login
+        $streakInfo = $this->levellingService->handleLoginStreak($user);
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
@@ -189,7 +197,8 @@ class AuthController extends Controller
             'data' => [
                 'user' => $user->fresh(),
                 'token' => $token,
-            ]
+                'streak_info' => $streakInfo, // ✅ Info streak untuk ditampilkan di UI
+            ],
         ]);
     }
 
@@ -209,30 +218,5 @@ class AuthController extends Controller
             'success' => true,
             'data' => $request->user()
         ]);
-    }
-
-    private function updateStreak(User $user)
-    {
-        $lastActive = $user->last_active_date;
-        $now = now();
-
-        if ($lastActive) {
-            $daysDiff = $lastActive->diffInDays($now);
-
-            if ($daysDiff == 1) {
-                // Consecutive day
-                $user->streak += 1;
-                $user->points += 10; // Bonus points untuk streak
-            } elseif ($daysDiff > 1) {
-                // Streak broken
-                $user->streak = 1;
-            }
-            // Same day = no change
-        } else {
-            $user->streak = 1;
-        }
-
-        $user->last_active_date = $now;
-        $user->save();
     }
 }

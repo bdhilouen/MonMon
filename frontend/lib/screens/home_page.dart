@@ -10,6 +10,9 @@ import '../utils/category_icons.dart';
 import '../utils/formatter.dart';
 import '../widgets/delete_confirmation_dialog.dart';
 import '../widgets/responsive_content.dart';
+import '../models/achievement.dart';
+import '../services/achievement_service.dart';
+import '../widgets/achievement_unlocked_dialog.dart';
 
 Color getCategoryColor(String category) {
   switch (category) {
@@ -62,6 +65,19 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _loadData();
     AppRefreshService.transactionsVersion.addListener(_onDataChanged);
+    _checkInitialAchievements();
+  }
+
+  Future<void> _checkInitialAchievements() async {
+    final newAchievements = await AchievementService.checkAchievements();
+    if (!mounted || newAchievements.isEmpty) return;
+
+    for (final achievementData in newAchievements) {
+      if (mounted && achievementData is Map<String, dynamic>) {
+        final achievement = Achievement.fromJson(achievementData);
+        showAchievementUnlockedDialog(context, achievement);
+      }
+    }
   }
 
   void _onDataChanged() {
@@ -237,15 +253,6 @@ class _HomePageState extends State<HomePage> {
                 ),
 
                 const SizedBox(height: 14),
-
-                // Streak info
-                if (loginStreak > 0)
-                  _StreakCard(
-                    streak: loginStreak,
-                    onTap: () => widget.onTabChange(3),
-                  ),
-
-                const SizedBox(height: 18),
 
                 TextField(
                   controller: searchController,
@@ -511,68 +518,6 @@ class _SummaryCard extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _StreakCard extends StatelessWidget {
-  final int streak;
-  final VoidCallback onTap;
-
-  const _StreakCard({required this.streak, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.orange.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.orange.withValues(alpha: 0.24)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Icon(
-                Icons.local_fire_department,
-                color: Colors.orange,
-                size: 28,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "Login Streak",
-                    style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    "$streak hari berturut-turut",
-                    style: const TextStyle(
-                      color: Colors.orange,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right, color: Colors.orange),
-          ],
-        ),
       ),
     );
   }

@@ -8,6 +8,8 @@ use App\Http\Controllers\API\AchievementController;
 use App\Http\Controllers\API\DashboardController;
 use App\Http\Controllers\API\ExportController;
 use App\Http\Controllers\API\ForgotPasswordController;
+use App\Http\Controllers\API\LevellingController;
+use App\Http\Controllers\API\NotificationController;
 
 // Public routes
 Route::post('/register',        [AuthController::class, 'register']);
@@ -48,4 +50,13 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // Monthly Wrapped
     Route::get('/wrapped/{year}/{month}',[DashboardController::class, 'monthlyWrapped']);
+
+    // Levelling
+    Route::get('/level/progress', [LevellingController::class, 'progress']);
+
+    // Notifications
+    Route::get('/notifications',           [NotificationController::class, 'index']);
+    Route::post('/notifications/{id}/read',[NotificationController::class, 'markAsRead']);
+    Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
+    Route::delete('/notifications/{id}',   [NotificationController::class, 'destroy']);
 });
