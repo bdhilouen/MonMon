@@ -5,10 +5,17 @@ class TransactionService {
   // Get all transactions
   static Future<List<Transaction>> getAll() async {
     final response = await ApiService.get('/transactions');
+
     if (response.success && response.data != null) {
-      final list = response.data as List;
-      return list.map((t) => Transaction.fromJson(t)).toList();
+      final rawData = response.data;
+
+      if (rawData is List) {
+        return rawData
+            .map((t) => Transaction.fromJson(t as Map<String, dynamic>))
+            .toList();
+      }
     }
+
     return [];
   }
 

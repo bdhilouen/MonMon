@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../data/app_data.dart';
 import '../models/transaction.dart';
+import '../services/transaction_service.dart';
 import '../utils/formatter.dart';
 
 class TransactionPage extends StatefulWidget {
@@ -15,48 +15,78 @@ class TransactionPage extends StatefulWidget {
 class _TransactionPageState extends State<TransactionPage> {
   final TextEditingController searchController = TextEditingController();
 
+  List<Transaction> _transactions = [];
+  bool _isLoading = true;
+  String? _errorMessage;
   String searchQuery = "";
 
-  Color getCategoryColor(String category) {
-    switch (category) {
-      case "Makan":
-        return Colors.orange;
-      case "Transport":
-        return Colors.blue;
-      case "Hiburan":
-        return Colors.purple;
-      case "Lainnya":
-        return Colors.grey;
-      case "Pemasukan":
-        return Colors.green;
-      default:
-        return Colors.blueGrey;
+  @override
+  void initState() {
+    super.initState();
+    loadTransactions();
+  }
+
+  Future<void> loadTransactions() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final result = await TransactionService.getAll();
+
+      if (!mounted) return;
+
+      setState(() {
+        _transactions = result;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _errorMessage = e.toString();
+        _isLoading = false;
+      });
     }
   }
 
-  IconData getCategoryIcon(String category) {
-    switch (category) {
-      case "Makan":
-        return Icons.restaurant;
-      case "Transport":
-        return Icons.directions_bus;
-      case "Hiburan":
-        return Icons.sports_esports;
-      case "Lainnya":
-        return Icons.more_horiz;
-      case "Pemasukan":
-        return Icons.arrow_downward;
-      default:
-        return Icons.category;
+  Color parseColor(String? hexColor) {
+    if (hexColor == null || hexColor.isEmpty) {
+      return Colors.blueGrey;
     }
+
+    final cleanHex = hexColor.replaceAll('#', '');
+
+    if (cleanHex.length != 6) {
+      return Colors.blueGrey;
+    }
+
+    return Color(int.parse('FF$cleanHex', radix: 16));
+  }
+
+  Color getTransactionColor(Transaction transaction) {
+    if (transaction.isIncome) {
+      return Colors.green;
+    }
+
+    return parseColor(transaction.categoryColor);
+  }
+
+  IconData getFallbackIcon(Transaction transaction) {
+    if (transaction.isIncome) {
+      return Icons.arrow_downward;
+    }
+
+    return Icons.category;
   }
 
   int getTotalIncome() {
     int total = 0;
 
-    for (var t in transaksi) {
-      if (t.isIncome) {
-        total += t.amount.toInt();
+    for (var transaction in _transactions) {
+      if (transaction.isIncome) {
+        total += transaction.amount;
       }
     }
 
@@ -66,9 +96,9 @@ class _TransactionPageState extends State<TransactionPage> {
   int getTotalExpense() {
     int total = 0;
 
-    for (var t in transaksi) {
-      if (!t.isIncome) {
-        total += t.amount.toInt();
+    for (var transaction in _transactions) {
+      if (!transaction.isIncome) {
+        total += transaction.amount;
       }
     }
 
@@ -76,34 +106,31 @@ class _TransactionPageState extends State<TransactionPage> {
   }
 
   List<Transaction> getFilteredTransactions() {
+    final sortedTransactions = [..._transactions]
+      ..sort((a, b) => b.date.compareTo(a.date));
+
     if (searchQuery.trim().isEmpty) {
-      return transaksi.reversed.toList();
+      return sortedTransactions;
     }
 
-    return transaksi
-        .where((t) {
-      return t.title.toLowerCase().contains(
-        searchQuery.toLowerCase(),
-      ) ||
-          t.category.toLowerCase().contains(
-            searchQuery.toLowerCase(),
-          );
-    })
-        .toList()
-        .reversed
-        .toList();
+    final query = searchQuery.toLowerCase();
+
+    return sortedTransactions.where((transaction) {
+      return transaction.title.toLowerCase().contains(query) ||
+          transaction.category.toLowerCase().contains(query);
+    }).toList();
   }
 
-  void editTransaction(Transaction transaction) {
+  Future<void> editTransaction(Transaction transaction) async {
     final TextEditingController editTitle =
     TextEditingController(text: transaction.title);
 
     final TextEditingController editAmount =
     TextEditingController(text: transaction.amount.toString());
 
-    showDialog(
+    final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           title: const Text("Edit Transaksi"),
           content: Column(
@@ -115,9 +142,7 @@ class _TransactionPageState extends State<TransactionPage> {
                   labelText: "Nama transaksi",
                 ),
               ),
-
               const SizedBox(height: 10),
-
               TextField(
                 controller: editAmount,
                 keyboardType: TextInputType.number,
@@ -130,40 +155,30 @@ class _TransactionPageState extends State<TransactionPage> {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(context);
+                Navigator.pop(dialogContext);
               },
               child: const Text("Batal"),
             ),
-
             TextButton(
               onPressed: () {
+                final title = editTitle.text.trim();
                 final int newAmount =
                     int.tryParse(editAmount.text.trim()) ?? 0;
 
-                if (editTitle.text.trim().isEmpty || newAmount <= 0) {
+                if (title.isEmpty || newAmount <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Nama dan nominal harus valid"),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
                   return;
                 }
 
-                setState(() {
-                  if (transaction.isIncome) {
-                    saldo -= transaction.amount.toInt();
-                  } else {
-                    saldo += transaction.amount.toInt();
-                  }
-
-                  transaction.title = editTitle.text.trim();
-                  transaction.amount = newAmount;
-
-                  if (transaction.isIncome) {
-                    saldo += newAmount;
-                  } else {
-                    saldo -= newAmount;
-                  }
-
-                  saveData();
+                Navigator.pop(dialogContext, {
+                  "title": title,
+                  "amount": newAmount,
                 });
-
-                Navigator.pop(context);
               },
               child: const Text("Simpan"),
             ),
@@ -171,19 +186,86 @@ class _TransactionPageState extends State<TransactionPage> {
         );
       },
     );
+
+    editTitle.dispose();
+    editAmount.dispose();
+
+    if (result == null) {
+      return;
+    }
+
+    final String newTitle = result["title"] as String;
+    final int newAmount = result["amount"] as int;
+
+    final updateResult = await TransactionService.update(
+      transaction.id,
+      amount: newAmount.toDouble(),
+      note: newTitle,
+    );
+
+    if (!mounted) return;
+
+    if (updateResult.success) {
+      showMessage("Transaksi berhasil diubah");
+      await loadTransactions();
+    } else {
+      showMessage(updateResult.message);
+    }
   }
 
-  void deleteTransaction(Transaction transaction) {
-    setState(() {
-      if (transaction.isIncome) {
-        saldo -= transaction.amount.toInt();
-      } else {
-        saldo += transaction.amount.toInt();
-      }
+  Future<void> deleteTransaction(Transaction transaction) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text("Hapus Transaksi"),
+          content: Text(
+            "Hapus transaksi '${transaction.title}'?",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
+              child: const Text("Batal"),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text(
+                "Hapus",
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        );
+      },
+    );
 
-      transaksi.remove(transaction);
-      saveData();
-    });
+    if (confirm != true) {
+      return;
+    }
+
+    final result = await TransactionService.delete(transaction.id);
+
+    if (!mounted) return;
+
+    if (result.success) {
+      showMessage("Transaksi berhasil dihapus");
+      await loadTransactions();
+    } else {
+      showMessage(result.message);
+    }
+  }
+
+  void showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
@@ -196,6 +278,12 @@ class _TransactionPageState extends State<TransactionPage> {
       appBar: AppBar(
         title: const Text("Transaksi"),
         elevation: 0,
+        actions: [
+          IconButton(
+            onPressed: loadTransactions,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -212,9 +300,7 @@ class _TransactionPageState extends State<TransactionPage> {
                     color: Colors.green,
                   ),
                 ),
-
                 const SizedBox(width: 10),
-
                 Expanded(
                   child: _SummaryCard(
                     title: "Pengeluaran",
@@ -274,7 +360,6 @@ class _TransactionPageState extends State<TransactionPage> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-
                 Text(
                   "${filteredTransactions.length} item",
                   style: TextStyle(
@@ -288,7 +373,16 @@ class _TransactionPageState extends State<TransactionPage> {
             const SizedBox(height: 12),
 
             Expanded(
-              child: transaksi.isEmpty
+              child: _isLoading
+                  ? const Center(
+                child: CircularProgressIndicator(),
+              )
+                  : _errorMessage != null
+                  ? _ErrorState(
+                message: "Gagal memuat transaksi",
+                onRetry: loadTransactions,
+              )
+                  : _transactions.isEmpty
                   ? const _EmptyState(
                 icon: Icons.receipt_long,
                 title: "Belum ada transaksi",
@@ -299,31 +393,34 @@ class _TransactionPageState extends State<TransactionPage> {
                   ? const _EmptyState(
                 icon: Icons.search_off,
                 title: "Transaksi tidak ditemukan",
-                subtitle: "Coba cari nama atau kategori lain.",
+                subtitle:
+                "Coba cari nama atau kategori lain.",
               )
-                  : ListView.builder(
-                padding: const EdgeInsets.only(bottom: 100),
-                itemCount: filteredTransactions.length,
-                itemBuilder: (context, index) {
-                  final transaction =
-                  filteredTransactions[index];
+                  : RefreshIndicator(
+                onRefresh: loadTransactions,
+                child: ListView.builder(
+                  padding:
+                  const EdgeInsets.only(bottom: 100),
+                  itemCount: filteredTransactions.length,
+                  itemBuilder: (context, index) {
+                    final transaction =
+                    filteredTransactions[index];
 
-                  return _TransactionItem(
-                    transaction: transaction,
-                    color: getCategoryColor(
-                      transaction.category,
-                    ),
-                    icon: getCategoryIcon(
-                      transaction.category,
-                    ),
-                    onTap: () {
-                      editTransaction(transaction);
-                    },
-                    onDelete: () {
-                      deleteTransaction(transaction);
-                    },
-                  );
-                },
+                    return _TransactionItem(
+                      transaction: transaction,
+                      color:
+                      getTransactionColor(transaction),
+                      fallbackIcon:
+                      getFallbackIcon(transaction),
+                      onTap: () {
+                        editTransaction(transaction);
+                      },
+                      onDelete: () {
+                        deleteTransaction(transaction);
+                      },
+                    );
+                  },
+                ),
               ),
             ),
           ],
@@ -371,9 +468,7 @@ class _SummaryCard extends StatelessWidget {
             color: color,
             size: 22,
           ),
-
           const SizedBox(height: 10),
-
           Text(
             title,
             style: TextStyle(
@@ -381,9 +476,7 @@ class _SummaryCard extends StatelessWidget {
               fontSize: 12,
             ),
           ),
-
           const SizedBox(height: 6),
-
           Text(
             value,
             maxLines: 1,
@@ -403,14 +496,14 @@ class _SummaryCard extends StatelessWidget {
 class _TransactionItem extends StatelessWidget {
   final Transaction transaction;
   final Color color;
-  final IconData icon;
+  final IconData fallbackIcon;
   final VoidCallback onTap;
   final VoidCallback onDelete;
 
   const _TransactionItem({
     required this.transaction,
     required this.color,
-    required this.icon,
+    required this.fallbackIcon,
     required this.onTap,
     required this.onDelete,
   });
@@ -448,10 +541,17 @@ class _TransactionItem extends StatelessWidget {
             color: color.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(14),
           ),
-          child: Icon(
-            isIncome ? Icons.arrow_downward : icon,
-            color: color,
-            size: 22,
+          child: Center(
+            child: transaction.categoryIcon != null
+                ? Text(
+              transaction.categoryIcon!,
+              style: const TextStyle(fontSize: 20),
+            )
+                : Icon(
+              isIncome ? Icons.arrow_downward : fallbackIcon,
+              color: color,
+              size: 22,
+            ),
           ),
         ),
         title: Text(
@@ -478,7 +578,7 @@ class _TransactionItem extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  "${isIncome ? '+' : '-'} ${formatRupiah(transaction.amount.toInt())}",
+                  "${isIncome ? '+' : '-'} ${formatRupiah(transaction.amount)}",
                   textAlign: TextAlign.right,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -489,9 +589,7 @@ class _TransactionItem extends StatelessWidget {
                   ),
                 ),
               ),
-
               const SizedBox(width: 4),
-
               IconButton(
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
@@ -504,6 +602,51 @@ class _TransactionItem extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _ErrorState({
+    required this.message,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.all(26),
+        decoration: BoxDecoration(
+          color: Colors.red.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 42,
+              color: Colors.red.shade400,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              message,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextButton(
+              onPressed: onRetry,
+              child: const Text("Coba Lagi"),
+            ),
+          ],
         ),
       ),
     );
@@ -538,18 +681,14 @@ class _EmptyState extends StatelessWidget {
               size: 42,
               color: Colors.grey.shade500,
             ),
-
             const SizedBox(height: 12),
-
             Text(
               title,
               style: const TextStyle(
                 fontWeight: FontWeight.bold,
               ),
             ),
-
             const SizedBox(height: 6),
-
             Text(
               subtitle,
               textAlign: TextAlign.center,
