@@ -5,6 +5,7 @@ import '../models/category.dart' as category_model;
 import '../services/category_service.dart';
 import '../services/transaction_service.dart';
 import '../utils/formatter.dart';
+import '../services/app_refresh_service.dart';
 
 class AddTransactionPage extends StatefulWidget {
   const AddTransactionPage({super.key});
@@ -209,6 +210,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     setState(() => _isSaving = false);
 
     if (result.success) {
+      AppRefreshService.notifyTransactionsChanged();
       showMessage("Transaksi berhasil ditambahkan");
       Navigator.pop(context, true);
     } else {

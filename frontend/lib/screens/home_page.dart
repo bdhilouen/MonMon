@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../data/app_data.dart';
 import '../models/transaction.dart';
 import '../utils/formatter.dart';
+import '../models/dashboard_data.dart';
+import '../services/dashboard_service.dart';
+import '../services/transaction_service.dart';
+import '../services/app_refresh_service.dart';
 
 enum HomeBadgeRule {
   streak,
@@ -68,13 +71,55 @@ class _HomePageState extends State<HomePage> {
 
   String searchQuery = "";
 
-  Map<String, int> getTotalPerCategory() {
-    Map<String, int> result = {};
+  DashboardData? _dashboard;
+  bool _isLoadingDashboard = true;
+  String? _dashboardErrorMessage;
 
-    for (var t in transaksi) {
-      if (!t.isIncome) {
-        result[t.category] =
-            (result[t.category] ?? 0) + t.amount.toInt();
+  @override
+  void initState() {
+    super.initState();
+    AppRefreshService.transactionsVersion.addListener(loadDashboard);
+    loadDashboard();
+  }
+
+  Future<void> loadDashboard() async {
+    setState(() {
+      _isLoadingDashboard = true;
+      _dashboardErrorMessage = null;
+    });
+
+    try {
+      final result = await DashboardService.getDashboard();
+
+      if (!mounted) return;
+
+      setState(() {
+        _dashboard = result;
+        _isLoadingDashboard = false;
+        _dashboardErrorMessage =
+        result == null ? "Gagal memuat dashboard" : null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _dashboardErrorMessage = e.toString();
+        _isLoadingDashboard = false;
+      });
+    }
+  }
+
+  List<Transaction> get dashboardTransactions {
+    return _dashboard?.recentTransactions ?? [];
+  }
+
+  Map<String, int> getTotalPerCategory() {
+    final Map<String, int> result = {};
+
+    for (var transaction in dashboardTransactions) {
+      if (!transaction.isIncome) {
+        result[transaction.category] =
+            (result[transaction.category] ?? 0) + transaction.amount;
       }
     }
 
@@ -82,51 +127,31 @@ class _HomePageState extends State<HomePage> {
   }
 
   List<Transaction> getFilteredTransactions() {
+    final sortedTransactions = [...dashboardTransactions]
+      ..sort((a, b) => b.date.compareTo(a.date));
+
     if (searchQuery.trim().isEmpty) {
-      return transaksi;
+      return sortedTransactions;
     }
 
-    return transaksi.where((t) {
-      return t.title.toLowerCase().contains(
-        searchQuery.toLowerCase(),
-      );
+    final query = searchQuery.toLowerCase();
+
+    return sortedTransactions.where((transaction) {
+      return transaction.title.toLowerCase().contains(query) ||
+          transaction.category.toLowerCase().contains(query);
     }).toList();
   }
 
   int getTotalIncome() {
-    int total = 0;
-
-    for (var t in transaksi) {
-      if (t.isIncome) {
-        total += t.amount.toInt();
-      }
-    }
-
-    return total;
+    return _dashboard?.monthlyStats.totalIncome.toInt() ?? 0;
   }
 
   int getTotalExpense() {
-    int total = 0;
-
-    for (var t in transaksi) {
-      if (!t.isIncome) {
-        total += t.amount.toInt();
-      }
-    }
-
-    return total;
+    return _dashboard?.monthlyStats.totalExpense.toInt() ?? 0;
   }
 
   int getExpenseCategoryCount() {
-    final Set<String> expenseCategories = {};
-
-    for (var t in transaksi) {
-      if (!t.isIncome) {
-        expenseCategories.add(t.category);
-      }
-    }
-
-    return expenseCategories.length;
+    return getTotalPerCategory().length;
   }
 
   List<HomeWalletBadge> getHomeBadges() {
@@ -248,6 +273,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   bool isHomeBadgeUnlocked({
+    required int streak,
+    required int balance,
     required HomeWalletBadge badge,
     required int totalTransaction,
     required int totalCategory,
@@ -257,7 +284,7 @@ class _HomePageState extends State<HomePage> {
   }) {
     switch (badge.rule) {
       case HomeBadgeRule.streak:
-        return loginStreak >= badge.target;
+        return streak >= badge.target;
 
       case HomeBadgeRule.firstTransaction:
         return totalTransaction >= badge.target;
@@ -269,7 +296,7 @@ class _HomePageState extends State<HomePage> {
         return totalCategory >= badge.target;
 
       case HomeBadgeRule.positiveBalance:
-        return saldo > 0;
+        return balance > 0;
 
       case HomeBadgeRule.controlledExpense:
         return totalIncome > 0 &&
@@ -286,11 +313,20 @@ class _HomePageState extends State<HomePage> {
   }
 
   HomeWalletBadge? getLatestUnlockedBadge() {
+    final dashboard = _dashboard;
+
+    if (dashboard == null) {
+      return null;
+    }
+
     final totalIncome = getTotalIncome();
     final totalExpense = getTotalExpense();
-    final totalTransaction = transaksi.length;
-    final totalCategory = categories.length;
+    final totalTransaction =
+        dashboard.monthlyStats.incomeCount + dashboard.monthlyStats.expenseCount;
+    final totalCategory = getTotalPerCategory().length;
     final expenseCategoryCount = getExpenseCategoryCount();
+    final streak = dashboard.user.streak;
+    final balance = dashboard.user.balance.toInt();
 
     final unlockedBadges = getHomeBadges().where((badge) {
       return isHomeBadgeUnlocked(
@@ -300,6 +336,8 @@ class _HomePageState extends State<HomePage> {
         expenseCategoryCount: expenseCategoryCount,
         totalIncome: totalIncome,
         totalExpense: totalExpense,
+        streak: streak,
+        balance: balance,
       );
     }).toList();
 
@@ -310,16 +348,16 @@ class _HomePageState extends State<HomePage> {
     return unlockedBadges.last;
   }
 
-  void editTransaction(Transaction transaction) {
+  Future<void> editTransaction(Transaction transaction) async {
     final TextEditingController editTitle =
     TextEditingController(text: transaction.title);
 
     final TextEditingController editAmount =
     TextEditingController(text: transaction.amount.toString());
 
-    showDialog(
+    final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           title: const Text("Edit Transaksi"),
           content: Column(
@@ -344,39 +382,29 @@ class _HomePageState extends State<HomePage> {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(context);
+                Navigator.pop(dialogContext);
               },
               child: const Text("Batal"),
             ),
             TextButton(
               onPressed: () {
-                final int newAmount =
-                    int.tryParse(editAmount.text) ?? 0;
+                final title = editTitle.text.trim();
+                final int newAmount = int.tryParse(editAmount.text.trim()) ?? 0;
 
-                if (editTitle.text.trim().isEmpty || newAmount <= 0) {
+                if (title.isEmpty || newAmount <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Nama dan nominal harus valid"),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
                   return;
                 }
 
-                setState(() {
-                  if (transaction.isIncome) {
-                    saldo -= transaction.amount.toInt();
-                  } else {
-                    saldo += transaction.amount.toInt();
-                  }
-
-                  transaction.title = editTitle.text.trim();
-                  transaction.amount = newAmount;
-
-                  if (transaction.isIncome) {
-                    saldo += newAmount;
-                  } else {
-                    saldo -= newAmount;
-                  }
-
-                  saveData();
+                Navigator.pop(dialogContext, {
+                  "title": title,
+                  "amount": newAmount,
                 });
-
-                Navigator.pop(context);
               },
               child: const Text("Simpan"),
             ),
@@ -384,27 +412,152 @@ class _HomePageState extends State<HomePage> {
         );
       },
     );
+
+    editTitle.dispose();
+    editAmount.dispose();
+
+    if (result == null) {
+      return;
+    }
+
+    final updateResult = await TransactionService.update(
+      transaction.id,
+      amount: (result["amount"] as int).toDouble(),
+      note: result["title"] as String,
+    );
+
+    if (!mounted) return;
+
+    if (updateResult.success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Transaksi berhasil diubah"),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      await loadDashboard();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(updateResult.message),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
-  void deleteTransaction(Transaction transaction) {
-    setState(() {
-      if (transaction.isIncome) {
-        saldo -= transaction.amount.toInt();
-      } else {
-        saldo += transaction.amount.toInt();
-      }
+  Future<void> deleteTransaction(Transaction transaction) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text("Hapus Transaksi"),
+          content: Text("Hapus transaksi '${transaction.title}'?"),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
+              child: const Text("Batal"),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text(
+                "Hapus",
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        );
+      },
+    );
 
-      transaksi.remove(transaction);
-      saveData();
-    });
+    if (confirm != true) {
+      return;
+    }
+
+    final result = await TransactionService.delete(transaction.id);
+
+    if (!mounted) return;
+
+    if (result.success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Transaksi berhasil dihapus"),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      await loadDashboard();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.message),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoadingDashboard) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text("MonMon"),
+          elevation: 0,
+        ),
+        body: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (_dashboardErrorMessage != null || _dashboard == null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text("MonMon"),
+          elevation: 0,
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.error_outline,
+                  size: 48,
+                  color: Colors.red.shade400,
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  "Gagal memuat dashboard",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextButton(
+                  onPressed: loadDashboard,
+                  child: const Text("Coba Lagi"),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    final dashboard = _dashboard!;
     final filteredTransactions = getFilteredTransactions();
-    final latestTransactions = filteredTransactions.reversed.take(3).toList();
+    final latestTransactions = filteredTransactions.take(3).toList();
     final categoryData = getTotalPerCategory();
     final latestBadge = getLatestUnlockedBadge();
+    final currentBalance = dashboard.user.balance.toInt();
+    final currentStreak = dashboard.user.streak;
 
     final bool isSearching = searchQuery.trim().isNotEmpty;
 
@@ -420,7 +573,7 @@ class _HomePageState extends State<HomePage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _BalanceCard(
-              saldo: saldo,
+              saldo: currentBalance,
             ),
 
             const SizedBox(height: 14),
@@ -452,7 +605,7 @@ class _HomePageState extends State<HomePage> {
             if (latestBadge != null) ...[
               _LatestBadgeCard(
                 badge: latestBadge,
-                loginStreak: loginStreak,
+                loginStreak: currentStreak,
                 onTap: () {
                   widget.onTabChange(3);
                 },
@@ -593,7 +746,7 @@ class _HomePageState extends State<HomePage> {
 
             const SizedBox(height: 10),
 
-            if (transaksi.isEmpty)
+            if (dashboardTransactions.isEmpty)
               const _EmptyState(
                 icon: Icons.receipt_long,
                 title: "Belum ada transaksi",
@@ -627,6 +780,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    AppRefreshService.transactionsVersion.removeListener(loadDashboard);
     searchController.dispose();
     super.dispose();
   }
@@ -785,6 +939,10 @@ class _TransactionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool isIncome = transaction.isIncome;
 
+    final Color tileColor = isIncome
+        ? Colors.green
+        : getCategoryColor(transaction.category);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
@@ -811,16 +969,20 @@ class _TransactionTile extends StatelessWidget {
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            color: getCategoryColor(transaction.category)
-                .withValues(alpha: 0.12),
+            color: tileColor.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(14),
           ),
-          child: Icon(
-            isIncome
-                ? Icons.arrow_downward
-                : Icons.arrow_upward,
-            color: getCategoryColor(transaction.category),
-            size: 22,
+          child: Center(
+            child: transaction.categoryIcon != null
+                ? Text(
+              transaction.categoryIcon!,
+              style: const TextStyle(fontSize: 20),
+            )
+                : Icon(
+              isIncome ? Icons.arrow_downward : Icons.arrow_upward,
+              color: tileColor,
+              size: 22,
+            ),
           ),
         ),
         title: Text(

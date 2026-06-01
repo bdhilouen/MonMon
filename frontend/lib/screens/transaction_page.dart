@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../models/transaction.dart';
 import '../services/transaction_service.dart';
 import '../utils/formatter.dart';
+import '../services/app_refresh_service.dart';
 
 class TransactionPage extends StatefulWidget {
   const TransactionPage({super.key});
@@ -21,9 +22,10 @@ class _TransactionPageState extends State<TransactionPage> {
   String searchQuery = "";
 
   @override
-  void initState() {
-    super.initState();
-    loadTransactions();
+  void dispose() {
+    AppRefreshService.transactionsVersion.removeListener(loadTransactions);
+    searchController.dispose();
+    super.dispose();
   }
 
   Future<void> loadTransactions() async {
@@ -429,11 +431,7 @@ class _TransactionPageState extends State<TransactionPage> {
     );
   }
 
-  @override
-  void dispose() {
-    searchController.dispose();
-    super.dispose();
-  }
+
 }
 
 class _SummaryCard extends StatelessWidget {
