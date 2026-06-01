@@ -5,20 +5,46 @@ class CategoryService {
   // Get all categories (grouped by type)
   static Future<({List<Category> income, List<Category> expense})> getAll() async {
     final response = await ApiService.get('/categories');
+
     if (response.success && response.data != null) {
-      final data = response.data as Map<String, dynamic>;
+      final rawData = response.data;
 
-      final incomeList = (data['income'] as List?)
-              ?.map((c) => Category.fromJson(c))
-              .toList() ??
-          [];
-      final expenseList = (data['expense'] as List?)
-              ?.map((c) => Category.fromJson(c))
-              .toList() ??
-          [];
+      // Kalau backend balikin grouped object:
+      // { "income": [...], "expense": [...] }
+      if (rawData is Map<String, dynamic>) {
+        final incomeList = (rawData['income'] as List?)
+            ?.map((c) => Category.fromJson(c))
+            .toList() ??
+            [];
 
-      return (income: incomeList, expense: expenseList);
+        final expenseList = (rawData['expense'] as List?)
+            ?.map((c) => Category.fromJson(c))
+            .toList() ??
+            [];
+
+        return (income: incomeList, expense: expenseList);
+      }
+
+      // Kalau backend balikin flat list:
+      // []
+      // atau [{...}, {...}]
+      if (rawData is List) {
+        final categories = rawData
+            .map((c) => Category.fromJson(c as Map<String, dynamic>))
+            .toList();
+
+        final incomeList = categories
+            .where((category) => category.type == 'income')
+            .toList();
+
+        final expenseList = categories
+            .where((category) => category.type == 'expense')
+            .toList();
+
+        return (income: incomeList, expense: expenseList);
+      }
     }
+
     return (income: <Category>[], expense: <Category>[]);
   }
 

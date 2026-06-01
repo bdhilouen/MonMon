@@ -111,13 +111,6 @@ class CategorySeeder extends Seeder
                 'color' => '#795548',
                 'type' => 'expense',
             ],
-            [
-                'user_id' => null,
-                'name' => 'Lainnya',
-                'icon' => '📦',
-                'color' => '#607D8B',
-                'type' => 'expense',
-            ],
         ];
 
         foreach ($categories as $category) {

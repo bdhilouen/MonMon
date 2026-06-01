@@ -4,6 +4,8 @@ import '../data/app_data.dart';
 import '../utils/formatter.dart';
 import '../services/auth_service.dart';
 import 'achievement_page.dart';
+import '../models/category.dart' as category_model;
+import '../services/category_service.dart';
 
 enum BadgeRule {
   streak,
@@ -51,6 +53,41 @@ class _ProfilePageState extends State<ProfilePage> {
     "Lainnya",
   ];
 
+  List<category_model.Category> _expenseCategories = [];
+  bool _isLoadingCategories = true;
+  String? _categoryErrorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    loadCategoriesFromApi();
+  }
+
+  Future<void> loadCategoriesFromApi() async {
+    setState(() {
+      _isLoadingCategories = true;
+      _categoryErrorMessage = null;
+    });
+
+    try {
+      final result = await CategoryService.getAll();
+
+      if (!mounted) return;
+
+      setState(() {
+        _expenseCategories = result.expense;
+        _isLoadingCategories = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _categoryErrorMessage = e.toString();
+        _isLoadingCategories = false;
+      });
+    }
+  }
+
   int getTotalIncome() {
     int total = 0;
 
@@ -87,18 +124,8 @@ class _ProfilePageState extends State<ProfilePage> {
     return expenseCategories.length;
   }
 
-  bool isDefaultCategory(String category) {
-    return defaultCategories.any(
-          (item) => item.toLowerCase() == category.toLowerCase(),
-    );
-  }
-
-  bool isCategoryUsed(String category) {
-    return transaksi.any(
-          (transaction) =>
-      !transaction.isIncome &&
-          transaction.category.toLowerCase() == category.toLowerCase(),
-    );
+  bool isDefaultCategory(category_model.Category category) {
+    return !category.isCustom;
   }
 
   void showMessage(String message) {
@@ -160,8 +187,7 @@ class _ProfilePageState extends State<ProfilePage> {
       BuildContext context,
       StateSetter refreshSheet,
       ) {
-    final TextEditingController categoryController =
-    TextEditingController();
+    final TextEditingController categoryController = TextEditingController();
 
     showDialog(
       context: context,
@@ -192,9 +218,9 @@ class _ProfilePageState extends State<ProfilePage> {
                   return;
                 }
 
-                final alreadyExists = categories.any(
+                final alreadyExists = _expenseCategories.any(
                       (category) =>
-                  category.toLowerCase() ==
+                  category.name.toLowerCase() ==
                       newCategory.toLowerCase(),
                 );
 
@@ -203,18 +229,27 @@ class _ProfilePageState extends State<ProfilePage> {
                   return;
                 }
 
-                setState(() {
-                  categories.add(newCategory);
-                });
-
-                refreshSheet(() {});
-
-                await saveData();
+                final result = await CategoryService.create(
+                  name: newCategory,
+                  icon: "📦",
+                  color: "#9B59B6",
+                  type: "expense",
+                );
 
                 if (!mounted) return;
 
-                Navigator.pop(dialogContext);
-                showMessage("Kategori berhasil ditambahkan");
+                if (result.success && result.category != null) {
+                  setState(() {
+                    _expenseCategories.add(result.category!);
+                  });
+
+                  refreshSheet(() {});
+
+                  Navigator.pop(dialogContext);
+                  showMessage("Kategori berhasil ditambahkan");
+                } else {
+                  showMessage(result.message);
+                }
               },
               child: const Text("Tambah"),
             ),
@@ -227,7 +262,7 @@ class _ProfilePageState extends State<ProfilePage> {
   void showEditCategoryDialog(
       BuildContext context,
       StateSetter refreshSheet,
-      String oldCategory,
+      category_model.Category oldCategory,
       ) {
     if (isDefaultCategory(oldCategory)) {
       showMessage("Kategori bawaan tidak bisa diedit");
@@ -235,7 +270,7 @@ class _ProfilePageState extends State<ProfilePage> {
     }
 
     final TextEditingController categoryController =
-    TextEditingController(text: oldCategory);
+    TextEditingController(text: oldCategory.name);
 
     showDialog(
       context: context,
@@ -265,12 +300,11 @@ class _ProfilePageState extends State<ProfilePage> {
                   return;
                 }
 
-                final alreadyExists = categories.any(
+                final alreadyExists = _expenseCategories.any(
                       (category) =>
-                  category.toLowerCase() ==
+                  category.name.toLowerCase() ==
                       newCategory.toLowerCase() &&
-                      category.toLowerCase() !=
-                          oldCategory.toLowerCase(),
+                      category.id != oldCategory.id,
                 );
 
                 if (alreadyExists) {
@@ -278,29 +312,41 @@ class _ProfilePageState extends State<ProfilePage> {
                   return;
                 }
 
-                setState(() {
-                  final index = categories.indexOf(oldCategory);
-
-                  if (index != -1) {
-                    categories[index] = newCategory;
-                  }
-
-                  for (var transaction in transaksi) {
-                    if (!transaction.isIncome &&
-                        transaction.category == oldCategory) {
-                      transaction.category = newCategory;
-                    }
-                  }
-                });
-
-                refreshSheet(() {});
-
-                await saveData();
+                final result = await CategoryService.update(
+                  oldCategory.id,
+                  name: newCategory,
+                  icon: oldCategory.icon,
+                  color: oldCategory.color,
+                  type: oldCategory.type,
+                );
 
                 if (!mounted) return;
 
-                Navigator.pop(dialogContext);
-                showMessage("Kategori berhasil diubah");
+                if (result.success) {
+                  setState(() {
+                    final index = _expenseCategories.indexWhere(
+                          (category) => category.id == oldCategory.id,
+                    );
+
+                    if (index != -1) {
+                      _expenseCategories[index] = category_model.Category(
+                        id: oldCategory.id,
+                        userId: oldCategory.userId,
+                        name: newCategory,
+                        icon: oldCategory.icon,
+                        color: oldCategory.color,
+                        type: oldCategory.type,
+                      );
+                    }
+                  });
+
+                  refreshSheet(() {});
+
+                  Navigator.pop(dialogContext);
+                  showMessage("Kategori berhasil diubah");
+                } else {
+                  showMessage(result.message);
+                }
               },
               child: const Text("Simpan"),
             ),
@@ -313,29 +359,29 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> deleteCategory(
       BuildContext context,
       StateSetter refreshSheet,
-      String category,
+      category_model.Category category,
       ) async {
     if (isDefaultCategory(category)) {
       showMessage("Kategori bawaan tidak bisa dihapus");
       return;
     }
 
-    if (isCategoryUsed(category)) {
-      showMessage("Kategori masih dipakai transaksi");
-      return;
-    }
-
-    setState(() {
-      categories.remove(category);
-    });
-
-    refreshSheet(() {});
-
-    await saveData();
+    final result = await CategoryService.delete(category.id);
 
     if (!mounted) return;
 
-    showMessage("Kategori berhasil dihapus");
+    if (result.success) {
+      setState(() {
+        _expenseCategories.removeWhere(
+              (item) => item.id == category.id,
+        );
+      });
+
+      refreshSheet(() {});
+      showMessage("Kategori berhasil dihapus");
+    } else {
+      showMessage(result.message);
+    }
   }
 
   void showManageCategories(BuildContext context) {
@@ -426,12 +472,34 @@ class _ProfilePageState extends State<ProfilePage> {
                   const SizedBox(height: 14),
 
                   Expanded(
-                    child: ListView.builder(
-                      itemCount: categories.length,
+                    child: _isLoadingCategories
+                        ? const Center(
+                      child: CircularProgressIndicator(),
+                    )
+                        : _categoryErrorMessage != null
+                        ? Center(
+                      child: Text(
+                        "Gagal memuat kategori",
+                        style: TextStyle(
+                          color: Colors.red.shade600,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    )
+                        : _expenseCategories.isEmpty
+                        ? Center(
+                      child: Text(
+                        "Belum ada kategori pengeluaran",
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    )
+                        : ListView.builder(
+                      itemCount: _expenseCategories.length,
                       itemBuilder: (context, index) {
-                        final category = categories[index];
+                        final category = _expenseCategories[index];
                         final isDefault = isDefaultCategory(category);
-                        final isUsed = isCategoryUsed(category);
 
                         return Container(
                           margin: const EdgeInsets.only(bottom: 10),
@@ -454,13 +522,11 @@ class _ProfilePageState extends State<ProfilePage> {
                                       : Colors.purple.withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(14),
                                 ),
-                                child: Icon(
-                                  isDefault
-                                      ? Icons.bookmark
-                                      : Icons.category,
-                                  color: isDefault
-                                      ? Colors.blue
-                                      : Colors.purple,
+                                child: Center(
+                                  child: Text(
+                                    category.icon,
+                                    style: const TextStyle(fontSize: 20),
+                                  ),
                                 ),
                               ),
 
@@ -468,11 +534,10 @@ class _ProfilePageState extends State<ProfilePage> {
 
                               Expanded(
                                 child: Column(
-                                  crossAxisAlignment:
-                                  CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      category,
+                                      category.name,
                                       style: const TextStyle(
                                         fontWeight: FontWeight.bold,
                                       ),
@@ -481,8 +546,6 @@ class _ProfilePageState extends State<ProfilePage> {
                                     Text(
                                       isDefault
                                           ? "Kategori bawaan"
-                                          : isUsed
-                                          ? "Sedang dipakai transaksi"
                                           : "Kategori custom",
                                       style: TextStyle(
                                         color: Colors.grey.shade600,
@@ -526,7 +589,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         );
                       },
                     ),
-                  ),
+                  )
                 ],
               ),
             );
@@ -912,7 +975,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final totalIncome = getTotalIncome();
     final totalExpense = getTotalExpense();
     final totalTransaction = transaksi.length;
-    final totalCategory = categories.length;
+    final totalCategory = _expenseCategories.length;
     final expenseCategoryCount = getExpenseCategoryCount();
 
     final badges = getWalletBadges();
@@ -1063,7 +1126,10 @@ class _ProfilePageState extends State<ProfilePage> {
 
             _CategoryManagerCard(
               totalCategory: totalCategory,
-              previewCategories: categories.take(5).toList(),
+              previewCategories: _expenseCategories
+                  .map((category) => category.name)
+                  .take(5)
+                  .toList(),
               onManage: () {
                 showManageCategories(context);
               },
