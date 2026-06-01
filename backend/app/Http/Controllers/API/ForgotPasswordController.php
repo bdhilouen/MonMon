@@ -24,7 +24,7 @@ class ForgotPasswordController extends Controller
 
         $user = User::where('email', $request->email)->first();
 
-        // ✅ Selalu return success untuk cegah user enumeration
+        // Selalu return success untuk cegah user enumeration
         if (!$user) {
             return response()->json([
                 'success' => true,
@@ -66,19 +66,68 @@ class ForgotPasswordController extends Controller
     }
 
     /**
-     * Step 2: Verifikasi OTP + Reset Password sekaligus
+     * Step 2: Verifikasi OTP reset password
+     * POST /api/verify-reset-otp
+     */
+    public function verifyResetOTP(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+        ]);
+
+        $otp = $request->input('otp')
+            ?? $request->input('token')
+            ?? $request->input('reset_token');
+
+        if (!$otp || !is_string($otp) || strlen($otp) !== 6) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Token reset wajib diisi dan harus 6 digit.',
+            ], 400);
+        }
+
+        $record = PasswordResetToken::verifyOTP($request->email, $otp);
+
+        if (!$record) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Token reset tidak valid atau sudah kadaluarsa.',
+            ], 400);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Token reset valid.',
+            'data' => [
+                'email' => $request->email,
+                'reset_token' => $otp,
+            ],
+        ]);
+    }
+
+    /**
+     * Step 3: Reset Password
      * POST /api/reset-password
      */
     public function resetPassword(Request $request)
     {
         $request->validate([
             'email' => 'required|email',
-            'otp' => 'required|string|size:6',
             'password' => 'required|string|min:8|confirmed',
         ]);
 
-        // ✅ Verify OTP
-        $record = PasswordResetToken::verifyOTP($request->email, $request->otp);
+        $otp = $request->input('otp')
+            ?? $request->input('token')
+            ?? $request->input('reset_token');
+
+        if (!$otp || !is_string($otp) || strlen($otp) !== 6) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Token reset wajib diisi dan harus 6 digit.',
+            ], 400);
+        }
+
+        $record = PasswordResetToken::verifyOTP($request->email, $otp);
 
         if (!$record) {
             return response()->json([
@@ -96,14 +145,13 @@ class ForgotPasswordController extends Controller
             ], 404);
         }
 
-        // ✅ Update password
         $user->password = Hash::make($request->password);
         $user->save();
 
-        // ✅ Force logout semua device
+        // Force logout semua device
         $user->tokens()->delete();
 
-        // ✅ Hapus OTP setelah berhasil
+        // Hapus OTP setelah berhasil reset
         $record->delete();
 
         return response()->json([
