@@ -3,9 +3,13 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 
-import '../data/app_data.dart';
 import '../utils/formatter.dart';
 import 'monthly_wrapped_page.dart';
+import '../models/dashboard_data.dart';
+import '../models/transaction.dart';
+import '../services/app_refresh_service.dart';
+import '../services/dashboard_service.dart';
+import '../services/transaction_service.dart';
 
 class ReportPage extends StatefulWidget {
   const ReportPage({super.key});
@@ -17,6 +21,14 @@ class ReportPage extends StatefulWidget {
 class _ReportPageState extends State<ReportPage> {
   late DateTime selectedMonth;
   int selectedTab = 0;
+  DashboardData? _dashboardData;
+  ChartDataResponse? _chartData;
+  List<Transaction> _transactions = [];
+
+  bool _isLoadingReport = true;
+  String? _errorMessage;
+
+  Map<String, String> _categoryColors = {};
 
   final List<String> tabs = [
     "Ringkasan",
@@ -68,17 +80,85 @@ class _ReportPageState extends State<ReportPage> {
   void initState() {
     super.initState();
 
-    if (transaksi.isNotEmpty) {
-      final sortedTransactions = [...transaksi]
-        ..sort((a, b) => b.date.compareTo(a.date));
+    final now = DateTime.now();
+    selectedMonth = DateTime(now.year, now.month);
 
-      selectedMonth = DateTime(
-        sortedTransactions.first.date.year,
-        sortedTransactions.first.date.month,
+    AppRefreshService.transactionsVersion.addListener(loadReportData);
+    loadReportData();
+  }
+
+  @override
+  void dispose() {
+    AppRefreshService.transactionsVersion.removeListener(loadReportData);
+    super.dispose();
+  }
+
+  String getApiDate(DateTime date) {
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+
+    return "${date.year}-$month-$day";
+  }
+
+  String getApiMonth(DateTime date) {
+    final month = date.month.toString().padLeft(2, '0');
+
+    return "${date.year}-$month";
+  }
+
+  DateTime getStartOfMonth(DateTime month) {
+    return DateTime(month.year, month.month, 1);
+  }
+
+  DateTime getEndOfMonth(DateTime month) {
+    return DateTime(month.year, month.month + 1, 0);
+  }
+
+  Future<void> loadReportData() async {
+    setState(() {
+      _isLoadingReport = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final startDate = getStartOfMonth(selectedMonth);
+      final endDate = getEndOfMonth(selectedMonth);
+
+      final dashboard = await DashboardService.getDashboard(
+        month: getApiMonth(selectedMonth),
       );
-    } else {
-      final now = DateTime.now();
-      selectedMonth = DateTime(now.year, now.month);
+
+      final chart = await DashboardService.getChartData(
+        startDate: getApiDate(startDate),
+        endDate: getApiDate(endDate),
+        groupBy: "day",
+      );
+
+      final transactions = await TransactionService.getAll();
+
+      if (!mounted) return;
+
+      setState(() {
+        _dashboardData = dashboard;
+        _chartData = chart;
+        _transactions = transactions;
+
+        _categoryColors = {
+          for (final item in chart?.categoryBreakdown ?? [])
+            item.categoryName: item.categoryColor,
+        };
+
+        _isLoadingReport = false;
+        _errorMessage =
+        dashboard == null || chart == null ? "Gagal memuat laporan" : null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _errorMessage = e.toString();
+        _isLoadingReport = false;
+      });
     }
   }
 
@@ -92,7 +172,7 @@ class _ReportPageState extends State<ReportPage> {
       monthMap["${month.year}-${month.month}"] = month;
     }
 
-    for (var transaction in transaksi) {
+    for (var transaction in _transactions) {
       final month = DateTime(
         transaction.date.year,
         transaction.date.month,
@@ -107,14 +187,14 @@ class _ReportPageState extends State<ReportPage> {
     return months;
   }
 
-  List<dynamic> getSelectedMonthTransactions() {
-    return transaksi.where((transaction) {
+  List<Transaction> getSelectedMonthTransactions() {
+    return _transactions.where((transaction) {
       return transaction.date.year == selectedMonth.year &&
           transaction.date.month == selectedMonth.month;
     }).toList();
   }
 
-  int getTotalIncome(List<dynamic> monthlyTransactions) {
+  int getTotalIncome(List<Transaction> monthlyTransactions) {
     int total = 0;
 
     for (var transaction in monthlyTransactions) {
@@ -127,7 +207,7 @@ class _ReportPageState extends State<ReportPage> {
     return total;
   }
 
-  int getTotalExpense(List<dynamic> monthlyTransactions) {
+  int getTotalExpense(List<Transaction> monthlyTransactions) {
     int total = 0;
 
     for (var transaction in monthlyTransactions) {
@@ -140,21 +220,30 @@ class _ReportPageState extends State<ReportPage> {
     return total;
   }
 
-  Map<String, double> getCategoryData(List<dynamic> monthlyTransactions) {
-    Map<String, double> data = {};
+  Map<String, double> getCategoryData(List<Transaction> monthlyTransactions) {
+    final Map<String, double> data = {};
+
+    final breakdown = _chartData?.categoryBreakdown ?? [];
+
+    if (breakdown.isNotEmpty) {
+      for (final item in breakdown) {
+        data[item.categoryName] = item.total;
+      }
+
+      return data;
+    }
 
     for (var transaction in monthlyTransactions) {
       if (!transaction.isIncome) {
         data[transaction.category] =
-            (data[transaction.category] ?? 0) +
-                transaction.amount.toDouble();
+            (data[transaction.category] ?? 0) + transaction.amount.toDouble();
       }
     }
 
     return data;
   }
 
-  Map<int, int> getWeeklyExpense(List<dynamic> monthlyTransactions) {
+  Map<int, int> getWeeklyExpense(List<Transaction> monthlyTransactions) {
     Map<int, int> weeklyData = {
       1: 0,
       2: 0,
@@ -188,15 +277,41 @@ class _ReportPageState extends State<ReportPage> {
   }
 
   Color getCategoryColor(String category) {
+    final hexColor = _categoryColors[category];
+
+    if (hexColor != null && hexColor.isNotEmpty) {
+      try {
+        final cleanHex = hexColor.replaceAll('#', '');
+
+        if (cleanHex.length == 6) {
+          return Color(int.parse('FF$cleanHex', radix: 16));
+        }
+      } catch (_) {
+        // fallback di bawah
+      }
+    }
+
     switch (category) {
       case "Makan":
+      case "Makan & Minum":
         return Colors.orange;
       case "Transport":
+      case "Transportasi":
         return Colors.blue;
       case "Hiburan":
         return Colors.purple;
-      case "Lainnya":
-        return Colors.grey;
+      case "Belanja":
+        return Colors.pink;
+      case "Kesehatan":
+        return Colors.cyan;
+      case "Pendidikan":
+        return Colors.indigo;
+      case "Tagihan":
+        return Colors.red;
+      case "Pulsa & Internet":
+        return Colors.teal;
+      case "Kopi & Nongkrong":
+        return Colors.brown;
       case "Pemasukan":
         return Colors.green;
       default:
@@ -232,7 +347,7 @@ class _ReportPageState extends State<ReportPage> {
     return sorted.first.key;
   }
 
-  String getMostWastefulDay(List<dynamic> monthlyTransactions) {
+  String getMostWastefulDay(List<Transaction> monthlyTransactions) {
     final Map<String, int> dailyExpense = {};
 
     for (var transaction in monthlyTransactions) {
@@ -266,12 +381,59 @@ class _ReportPageState extends State<ReportPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoadingReport) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF8F1F8),
+        body: const SafeArea(
+          child: Center(
+            child: CircularProgressIndicator(),
+          ),
+        ),
+      );
+    }
+
+    if (_errorMessage != null || _dashboardData == null || _chartData == null) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF8F1F8),
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 48,
+                    color: Colors.red.shade400,
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    "Gagal memuat laporan",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextButton(
+                    onPressed: loadReportData,
+                    child: const Text("Coba Lagi"),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     final monthlyTransactions = getSelectedMonthTransactions();
     final categoryData = getCategoryData(monthlyTransactions);
-    final totalIncome = getTotalIncome(monthlyTransactions);
-    final totalExpense = getTotalExpense(monthlyTransactions);
-    final savedAmount = totalIncome - totalExpense;
 
+    final stats = _dashboardData!.monthlyStats;
+
+    final totalIncome = stats.totalIncome.toInt();
+    final totalExpense = stats.totalExpense.toInt();
+    final savedAmount = stats.netIncome.toInt();
     return Scaffold(
       backgroundColor: const Color(0xFFF8F1F8),
       body: SafeArea(
@@ -316,6 +478,8 @@ class _ReportPageState extends State<ReportPage> {
                       setState(() {
                         selectedMonth = month;
                       });
+
+                      loadReportData();
                     },
                   ),
 
@@ -374,7 +538,7 @@ class _ReportPageState extends State<ReportPage> {
   }
 
   Widget _buildSummaryTab({
-    required List<dynamic> monthlyTransactions,
+    required List<Transaction> monthlyTransactions,
     required Map<String, double> categoryData,
     required int totalIncome,
     required int totalExpense,
@@ -587,7 +751,7 @@ class _ReportPageState extends State<ReportPage> {
   }
 
   Widget _buildWeeklyTab({
-    required List<dynamic> monthlyTransactions,
+    required List<Transaction> monthlyTransactions,
     required Map<int, int> weeklyData,
   }) {
     final maxValue = weeklyData.values.isEmpty
@@ -698,7 +862,7 @@ class _ReportPageState extends State<ReportPage> {
               const SizedBox(height: 12),
 
               Text(
-                "Rata-rata harian dari transaksi pengeluaran bulan ini.",
+                "Total pengeluaran berdasarkan hari dalam minggu pada bulan ini.",
                 style: TextStyle(
                   color: Colors.grey.shade600,
                   fontSize: 12,
