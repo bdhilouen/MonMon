@@ -1,11 +1,15 @@
-import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
+
+// Conditional import: Web gets the stub, native gets dart:io + share_plus.
+import '../services/wrapped_image_native.dart'
+    if (dart.library.js_interop) '../services/wrapped_image_web.dart'
+    as wrapped_io;
 
 import '../models/monthly_wrapped.dart';
 import '../services/app_refresh_service.dart';
@@ -69,26 +73,28 @@ class _MonthlyWrappedPageState extends State<MonthlyWrappedPage> {
     }
   }
 
-  Future<File> _captureImage() async {
+  /// Captures the wrapped card widget as PNG bytes.
+  Future<Uint8List> _captureBytes() async {
     final boundary =
         _wrappedKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
     final image = await boundary.toImage(pixelRatio: 3);
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-    final bytes = byteData!.buffer.asUint8List();
-    final directory = await getApplicationDocumentsDirectory();
-    final filename =
-        'monmon_wrapped_${DateFormat('yyyy_MM').format(_month)}.png';
-    final file = File('${directory.path}/$filename');
-    await file.writeAsBytes(bytes);
-    return file;
+    return byteData!.buffer.asUint8List();
   }
+
+  String get _filename =>
+      'monmon_wrapped_${DateFormat('yyyy_MM').format(_month)}.png';
 
   Future<void> _downloadImage() async {
     setState(() => _isExporting = true);
     try {
-      final file = await _captureImage();
+      final bytes = await _captureBytes();
+      final filePath = await wrapped_io.saveWrappedImage(
+        bytes,
+        _filename,
+      );
       if (!mounted) return;
-      showAppSnack(context, 'Gambar tersimpan: ${file.path}');
+      showAppSnack(context, 'Gambar tersimpan: $filePath');
     } catch (e) {
       if (!mounted) return;
       showAppSnack(context, 'Gagal menyimpan gambar', success: false);
@@ -100,10 +106,8 @@ class _MonthlyWrappedPageState extends State<MonthlyWrappedPage> {
   Future<void> _shareImage() async {
     setState(() => _isExporting = true);
     try {
-      final file = await _captureImage();
-      await Share.shareXFiles([
-        XFile(file.path),
-      ], text: 'Monthly Wrapped MonMon');
+      final bytes = await _captureBytes();
+      await wrapped_io.shareWrappedImage(bytes, _filename);
     } catch (e) {
       if (!mounted) return;
       showAppSnack(context, 'Gagal membagikan gambar', success: false);
@@ -133,67 +137,72 @@ class _MonthlyWrappedPageState extends State<MonthlyWrappedPage> {
       appBar: AppBar(
         title: const Text('Monthly Wrapped'),
         actions: [
-          IconButton(
-            onPressed: _isExporting || _wrapped == null ? null : _shareImage,
-            icon: const Icon(Icons.ios_share),
-            tooltip: 'Share',
-          ),
-          IconButton(
-            onPressed: _isExporting || _wrapped == null ? null : _downloadImage,
-            icon: const Icon(Icons.download),
-            tooltip: 'Download',
-          ),
+          // Share & Download only available on native (mobile/desktop).
+          if (!kIsWeb) ...[
+            IconButton(
+              onPressed: _isExporting || _wrapped == null ? null : _shareImage,
+              icon: const Icon(Icons.ios_share),
+              tooltip: 'Share',
+            ),
+            IconButton(
+              onPressed:
+                  _isExporting || _wrapped == null ? null : _downloadImage,
+              icon: const Icon(Icons.download),
+              tooltip: 'Download',
+            ),
+          ],
         ],
       ),
       body: _isLoading
           ? const AppLoading()
           : _errorMessage != null
-          ? AppErrorState(message: _errorMessage!, onRetry: _loadWrapped)
-          : RefreshIndicator(
-              onRefresh: _loadWrapped,
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    InkWell(
-                      onTap: _pickMonth,
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
+              ? AppErrorState(message: _errorMessage!, onRetry: _loadWrapped)
+              : RefreshIndicator(
+                  onRefresh: _loadWrapped,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        InkWell(
+                          onTap: _pickMonth,
                           borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.calendar_month, size: 20),
-                            const SizedBox(width: 10),
-                            Text(
-                              DateFormat('MMMM yyyy').format(_month),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                              ),
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(8),
                             ),
-                            const Spacer(),
-                            Icon(
-                              Icons.expand_more,
-                              color: Colors.grey.shade600,
+                            child: Row(
+                              children: [
+                                const Icon(Icons.calendar_month, size: 20),
+                                const SizedBox(width: 10),
+                                Text(
+                                  DateFormat('MMMM yyyy').format(_month),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const Spacer(),
+                                Icon(
+                                  Icons.expand_more,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: 16),
+                        RepaintBoundary(
+                          key: _wrappedKey,
+                          child:
+                              _WrappedCard(wrapped: _wrapped!, month: _month),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 16),
-                    RepaintBoundary(
-                      key: _wrappedKey,
-                      child: _WrappedCard(wrapped: _wrapped!, month: _month),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
     );
   }
 }

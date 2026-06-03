@@ -79,13 +79,21 @@ class _TransactionPageState extends State<TransactionPage> {
   }
 
   List<Transaction> getFilteredTransactions() {
+    List<Transaction> result;
+
     if (searchQuery.trim().isEmpty) {
-      return _allTransactions;
+      result = List.of(_allTransactions);
+    } else {
+      result = _allTransactions.where((t) {
+        return t.title.toLowerCase().contains(searchQuery.toLowerCase()) ||
+            t.category.toLowerCase().contains(searchQuery.toLowerCase());
+      }).toList();
     }
-    return _allTransactions.where((t) {
-      return t.title.toLowerCase().contains(searchQuery.toLowerCase()) ||
-          t.category.toLowerCase().contains(searchQuery.toLowerCase());
-    }).toList();
+
+    // Urutkan dari transaksi terbaru ke terlama (descending by date).
+    result.sort((a, b) => b.date.compareTo(a.date));
+
+    return result;
   }
 
   void editTransaction(Transaction transaction) {

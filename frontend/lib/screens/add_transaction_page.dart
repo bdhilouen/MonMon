@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 
 import '../models/category.dart';
 import '../services/category_service.dart';
@@ -8,7 +9,6 @@ import '../services/app_refresh_service.dart';
 import '../utils/category_icons.dart';
 import '../utils/formatter.dart';
 import '../models/achievement.dart';
-import '../widgets/achievement_unlocked_dialog.dart';
 import '../widgets/responsive_content.dart';
 
 class AddTransactionPage extends StatefulWidget {
@@ -29,6 +29,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   List<Category> _incomeCategories = [];
   List<Category> _expenseCategories = [];
   Category? _selectedCategory;
+  DateTime _selectedDate = DateTime.now();
 
   @override
   void initState() {
@@ -326,7 +327,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       amount: amount.toDouble(),
       categoryId: _selectedCategory!.id,
       note: title,
-      date: DateTime.now(),
+      date: _selectedDate,
     );
 
     if (!mounted) return;
@@ -336,18 +337,23 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     if (result.success) {
       AppRefreshService.notifyAllChanged();
 
-      // Check for new achievements
+      // Parse new achievements to return to the parent page.
+      // The parent is responsible for showing dialogs AFTER this page closes.
+      final List<Achievement> newAchievements = [];
       if (result.newAchievements != null &&
           result.newAchievements!.isNotEmpty) {
         for (final achievementData in result.newAchievements!) {
-          if (mounted && achievementData is Map<String, dynamic>) {
-            final achievement = Achievement.fromJson(achievementData);
-            showAchievementUnlockedDialog(context, achievement);
+          if (achievementData is Map<String, dynamic>) {
+            newAchievements.add(Achievement.fromJson(achievementData));
           }
         }
       }
 
-      Navigator.pop(context);
+      // Pop and pass achievements back to the caller.
+      // Using mounted check before Navigator call is still good practice.
+      if (mounted) {
+        Navigator.pop(context, newAchievements);
+      }
     } else {
       showMessage(result.message);
     }
@@ -559,6 +565,61 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                       ),
                     ),
                   ],
+                ),
+              ),
+
+              const SizedBox(height: 14),
+
+              InkWell(
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: _selectedDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now(),
+                    initialEntryMode: DatePickerEntryMode.calendarOnly,
+                  );
+                  if (picked != null) {
+                    setState(() => _selectedDate = picked);
+                  }
+                },
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.calendar_month, size: 22, color: Colors.grey.shade700),
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Tanggal Transaksi',
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            DateFormat('EEEE, dd MMMM yyyy').format(_selectedDate),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Spacer(),
+                      Icon(
+                        Icons.expand_more,
+                        color: Colors.grey.shade600,
+                      ),
+                    ],
+                  ),
                 ),
               ),
 

@@ -26,11 +26,13 @@ class _ReportPageState extends State<ReportPage> {
 
   late DateTime _startDate;
   late DateTime _endDate;
+  late DateTime _month;
 
   @override
   void initState() {
     super.initState();
     final now = DateTime.now();
+    _month = DateTime(now.year, now.month);
     _startDate = DateTime(now.year, now.month, 1);
     _endDate = DateTime(now.year, now.month + 1, 0);
     _loadData();
@@ -65,6 +67,26 @@ class _ReportPageState extends State<ReportPage> {
       _totalExpense = totalExpense;
       _isLoading = false;
     });
+  }
+
+  Future<void> _pickMonth() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _month,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      initialEntryMode: DatePickerEntryMode.calendarOnly,
+    );
+
+    if (picked != null) {
+      setState(() {
+        _month = DateTime(picked.year, picked.month);
+        _startDate = DateTime(picked.year, picked.month, 1);
+        _endDate = DateTime(picked.year, picked.month + 1, 0);
+        _isLoading = true;
+      });
+      _loadData();
+    }
   }
 
   Color _getCategoryColor(CategoryBreakdown cat) {
@@ -144,6 +166,37 @@ class _ReportPageState extends State<ReportPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      InkWell(
+                        onTap: _pickMonth,
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.calendar_month, size: 20),
+                              const SizedBox(width: 10),
+                              Text(
+                                DateFormat('MMMM yyyy').format(_month),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const Spacer(),
+                              Icon(
+                                Icons.expand_more,
+                                color: Colors.grey.shade600,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+
                       _TotalExpenseCard(totalExpense: _totalExpense),
 
                       const SizedBox(height: 16),

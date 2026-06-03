@@ -5,6 +5,8 @@ import 'home_page.dart';
 import 'transaction_page.dart';
 import 'report_page.dart';
 import 'profile_page.dart';
+import '../models/achievement.dart';
+import '../widgets/achievement_unlocked_dialog.dart';
 
 class WebMainPage extends StatefulWidget {
   const WebMainPage({super.key});
@@ -39,10 +41,36 @@ class _WebMainPageState extends State<WebMainPage> {
   ];
 
   Future<void> openAddTransactionPage() async {
-    await Navigator.push(
+    // AddTransactionPage returns a List<Achievement> of newly unlocked
+    // achievements via Navigator.pop(context, newAchievements).
+    final newAchievements = await Navigator.push<List<Achievement>>(
       context,
       MaterialPageRoute(builder: (context) => const AddTransactionPage()),
     );
+
+    // The form page is now fully closed. It's safe to show dialogs here
+    // using this widget's context without risk of using a disposed context.
+    if (mounted && newAchievements != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Transaksi berhasil dicatat!'),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+
+    if (mounted && newAchievements != null && newAchievements.isNotEmpty) {
+      for (final achievement in newAchievements) {
+        if (mounted) {
+          await showAchievementUnlockedDialog(context, achievement);
+        }
+      }
+    }
 
     setState(() {});
   }

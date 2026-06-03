@@ -109,12 +109,20 @@ class _HomePageState extends State<HomePage> {
   }
 
   List<Transaction> getFilteredTransactions() {
+    List<Transaction> result;
+
     if (searchQuery.trim().isEmpty) {
-      return _transactions;
+      result = List.of(_transactions);
+    } else {
+      result = _transactions.where((t) {
+        return t.title.toLowerCase().contains(searchQuery.toLowerCase());
+      }).toList();
     }
-    return _transactions.where((t) {
-      return t.title.toLowerCase().contains(searchQuery.toLowerCase());
-    }).toList();
+
+    // Urutkan dari transaksi terbaru ke terlama (descending by date).
+    result.sort((a, b) => b.date.compareTo(a.date));
+
+    return result;
   }
 
   int getTotalIncome() => _dashboardData?.monthlyStats.totalIncome.toInt() ?? 0;
