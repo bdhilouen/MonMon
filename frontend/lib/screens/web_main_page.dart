@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import 'add_transaction_page.dart';
 import 'home_page.dart';
@@ -87,20 +88,21 @@ class _WebMainPageState extends State<WebMainPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Padding(
-                    padding: EdgeInsets.all(24),
+                  Padding(
+                    padding: const EdgeInsets.all(24),
                     child: Row(
                       children: [
                         CircleAvatar(
                           radius: 24,
                           backgroundColor: Colors.white,
-                          child: Icon(
-                            Icons.account_balance_wallet,
-                            color: Colors.blue,
+                          child: SvgPicture.asset(
+                            'assets/images/monmon_logo.svg',
+                            height: 120,
+                            width: 120,
                           ),
                         ),
-                        SizedBox(width: 12),
-                        Text(
+                        const SizedBox(width: 12),
+                        const Text(
                           "MonMon",
                           style: TextStyle(
                             color: Colors.white,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../services/auth_service.dart';
 import '../main.dart';
 import '../widgets/responsive_content.dart';
@@ -86,10 +87,10 @@ class _LoginPageState extends State<LoginPage> {
                           color: Colors.blue.shade700,
                           borderRadius: BorderRadius.circular(20),
                         ),
-                        child: const Icon(
-                          Icons.account_balance_wallet,
-                          size: 44,
-                          color: Colors.white,
+                        child: SvgPicture.asset(
+                          'assets/images/monmon_logo.svg',
+                          height: 80,
+                          width: 80,
                         ),
                       ),
                       const SizedBox(height: 16),

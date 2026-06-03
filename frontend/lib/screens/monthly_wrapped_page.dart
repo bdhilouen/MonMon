@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 
 // Conditional import: Web gets the stub, native gets dart:io + share_plus.
@@ -233,7 +234,11 @@ class _WrappedCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.account_balance_wallet, color: Colors.white),
+              SvgPicture.asset(
+                'assets/images/monmon_logo.svg',
+                height: 80,
+                width: 80,
+              ),
               const SizedBox(width: 8),
               Text(
                 DateFormat('MMMM yyyy').format(month),
