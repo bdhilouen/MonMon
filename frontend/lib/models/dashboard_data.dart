@@ -4,6 +4,7 @@ class DashboardData {
   final DashboardUser user;
   final String month;
   final MonthlyStats monthlyStats;
+  final AllTimeStats allTimeStats;
   final List<Transaction> recentTransactions;
   final int achievementsUnlocked;
 
@@ -11,6 +12,7 @@ class DashboardData {
     required this.user,
     required this.month,
     required this.monthlyStats,
+    required this.allTimeStats,
     required this.recentTransactions,
     this.achievementsUnlocked = 0,
   });
@@ -20,6 +22,7 @@ class DashboardData {
       user: DashboardUser.fromJson(json['user'] ?? {}),
       month: json['month'] ?? '',
       monthlyStats: MonthlyStats.fromJson(json['monthly_stats'] ?? {}),
+      allTimeStats: AllTimeStats.fromJson(json['all_time_stats'] ?? {}),
       recentTransactions:
           (json['recent_transactions'] as List?)
               ?.map((t) => Transaction.fromJson(t))
@@ -82,6 +85,26 @@ class MonthlyStats {
       savingRate: (json['saving_rate'] as num?)?.toDouble() ?? 0.0,
       incomeCount: (json['income_count'] as num?)?.toInt() ?? 0,
       expenseCount: (json['expense_count'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+class AllTimeStats {
+  final double totalIncome;
+  final double totalExpense;
+  final double balance;
+
+  AllTimeStats({
+    required this.totalIncome,
+    required this.totalExpense,
+    required this.balance,
+  });
+
+  factory AllTimeStats.fromJson(Map<String, dynamic> json) {
+    return AllTimeStats(
+      totalIncome: (json['total_income'] as num?)?.toDouble() ?? 0.0,
+      totalExpense: (json['total_expense'] as num?)?.toDouble() ?? 0.0,
+      balance: (json['balance'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }

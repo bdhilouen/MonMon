@@ -51,14 +51,14 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final TextEditingController searchController = TextEditingController();
-
-  String searchQuery = "";
   bool _isLoading = true;
+
+  // Filter state (independen dari halaman transaksi)
+  String _selectedFilter = 'all'; // 'all', 'income', 'expense'
 
   // Data from API
   DashboardData? _dashboardData;
-  List<Transaction> _transactions = [];
+  List<Transaction> _allTransactions = [];
 
   @override
   void initState() {
@@ -85,22 +85,34 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _loadData() async {
-    final dashboard = await DashboardService.getDashboard();
+    final results = await Future.wait([
+      DashboardService.getDashboard(),
+      TransactionService.getAll(),
+    ]);
+
     if (!mounted) return;
 
     setState(() {
-      _dashboardData = dashboard;
-      _transactions = dashboard?.recentTransactions ?? [];
+      _dashboardData = results[0] as DashboardData?;
+      _allTransactions = results[1] as List<Transaction>? ?? [];
       _isLoading = false;
     });
   }
 
-  int get saldo => _dashboardData?.user.balance.toInt() ?? 0;
+  // Saldo dari backend all_time_stats
+  int get saldo => _dashboardData?.allTimeStats.balance.toInt() ?? 0;
   int get loginStreak => _dashboardData?.user.streak ?? 0;
+
+  // Pemasukan & Pengeluaran bulan ini (dari monthly_stats backend)
+  int getTotalIncomeThisMonth() =>
+      _dashboardData?.monthlyStats.totalIncome.toInt() ?? 0;
+
+  int getTotalExpenseThisMonth() =>
+      _dashboardData?.monthlyStats.totalExpense.toInt() ?? 0;
 
   Map<String, int> getTotalPerCategory() {
     Map<String, int> result = {};
-    for (var t in _transactions) {
+    for (var t in _get7DayTransactions()) {
       if (!t.isIncome) {
         result[t.category] = (result[t.category] ?? 0) + t.amount.toInt();
       }
@@ -108,27 +120,28 @@ class _HomePageState extends State<HomePage> {
     return result;
   }
 
-  List<Transaction> getFilteredTransactions() {
-    List<Transaction> result;
+  /// Transaksi 7 hari terakhir, dengan filter tipe dan urutan terbaru→terlama
+  List<Transaction> _get7DayTransactions() {
+    final now = DateTime.now();
+    final sevenDaysAgo = DateTime(now.year, now.month, now.day)
+        .subtract(const Duration(days: 7));
 
-    if (searchQuery.trim().isEmpty) {
-      result = List.of(_transactions);
-    } else {
-      result = _transactions.where((t) {
-        return t.title.toLowerCase().contains(searchQuery.toLowerCase());
-      }).toList();
-    }
+    List<Transaction> result = _allTransactions.where((t) {
+      // Filter by date: 7 hari terakhir
+      if (t.date.isBefore(sevenDaysAgo)) return false;
+
+      // Filter by type
+      if (_selectedFilter == 'income' && !t.isIncome) return false;
+      if (_selectedFilter == 'expense' && t.isIncome) return false;
+
+      return true;
+    }).toList();
 
     // Urutkan dari transaksi terbaru ke terlama (descending by date).
     result.sort((a, b) => b.date.compareTo(a.date));
 
     return result;
   }
-
-  int getTotalIncome() => _dashboardData?.monthlyStats.totalIncome.toInt() ?? 0;
-
-  int getTotalExpense() =>
-      _dashboardData?.monthlyStats.totalExpense.toInt() ?? 0;
 
   void editTransaction(Transaction transaction) {
     if (transaction.id == null) return;
@@ -212,11 +225,8 @@ class _HomePageState extends State<HomePage> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final filteredTransactions = getFilteredTransactions();
-    final latestTransactions = filteredTransactions.take(3).toList();
+    final recentTransactions = _get7DayTransactions();
     final categoryData = getTotalPerCategory();
-
-    final bool isSearching = searchQuery.trim().isNotEmpty;
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
@@ -243,7 +253,8 @@ class _HomePageState extends State<HomePage> {
                     Expanded(
                       child: _SummaryCard(
                         title: "Pemasukan",
-                        value: formatRupiah(getTotalIncome()),
+                        value: formatRupiah(getTotalIncomeThisMonth()),
+                        subtitle: "Bulan ini",
                         icon: Icons.arrow_downward,
                         color: Colors.green,
                       ),
@@ -252,48 +263,13 @@ class _HomePageState extends State<HomePage> {
                     Expanded(
                       child: _SummaryCard(
                         title: "Pengeluaran",
-                        value: formatRupiah(getTotalExpense()),
+                        value: formatRupiah(getTotalExpenseThisMonth()),
+                        subtitle: "Bulan ini",
                         icon: Icons.arrow_upward,
                         color: Colors.red,
                       ),
                     ),
                   ],
-                ),
-
-                const SizedBox(height: 14),
-
-                TextField(
-                  controller: searchController,
-                  decoration: InputDecoration(
-                    hintText: "Cari transaksi...",
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: isSearching
-                        ? IconButton(
-                            icon: const Icon(Icons.close),
-                            onPressed: () {
-                              setState(() {
-                                searchController.clear();
-                                searchQuery = "";
-                              });
-                            },
-                          )
-                        : null,
-                    filled: true,
-                    fillColor: Colors.grey.shade100,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                  onChanged: (value) {
-                    setState(() {
-                      searchQuery = value;
-                    });
-                  },
                 ),
 
                 const SizedBox(height: 20),
@@ -364,37 +340,49 @@ class _HomePageState extends State<HomePage> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      isSearching ? "Hasil Pencarian" : "Transaksi Terbaru",
-                      style: const TextStyle(
+                    const Text(
+                      "Transaksi Terbaru",
+                      style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                     TextButton(
                       onPressed: () => widget.onTabChange(1),
-                      child: const Text("Lihat Semua"),
+                      child: const Text("Lihat Semua →"),
                     ),
                   ],
                 ),
 
+                const SizedBox(height: 8),
+
+                // Filter chips
+                _FilterChips(
+                  selectedFilter: _selectedFilter,
+                  onFilterChanged: (filter) {
+                    setState(() {
+                      _selectedFilter = filter;
+                    });
+                  },
+                ),
+
                 const SizedBox(height: 10),
 
-                if (_transactions.isEmpty)
+                if (_allTransactions.isEmpty)
                   const _EmptyState(
                     icon: Icons.receipt_long,
                     title: "Belum ada transaksi",
                     subtitle: "Tambahkan transaksi pertama lewat tombol +.",
                   )
-                else if (filteredTransactions.isEmpty)
+                else if (recentTransactions.isEmpty)
                   const _EmptyState(
-                    icon: Icons.search_off,
-                    title: "Transaksi tidak ditemukan",
-                    subtitle: "Coba pakai kata kunci lain.",
+                    icon: Icons.history,
+                    title: "Belum ada transaksi dalam 7 hari terakhir",
+                    subtitle: "Transaksi lama bisa dilihat di halaman Transaksi.",
                   )
                 else
                   Column(
-                    children: latestTransactions.map((transaction) {
+                    children: recentTransactions.map((transaction) {
                       return _TransactionTile(
                         transaction: transaction,
                         onTap: () => editTransaction(transaction),
@@ -412,11 +400,68 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
-    searchController.dispose();
     AppRefreshService.transactionsVersion.removeListener(_onDataChanged);
     super.dispose();
   }
 }
+
+// ─── Filter Chips ───────────────────────────────────────────────────────────
+
+class _FilterChips extends StatelessWidget {
+  final String selectedFilter;
+  final ValueChanged<String> onFilterChanged;
+
+  const _FilterChips({
+    required this.selectedFilter,
+    required this.onFilterChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _buildChip('all', 'Semua', Icons.list, Colors.blue),
+        const SizedBox(width: 8),
+        _buildChip('income', '↓ Pemasukan', Icons.arrow_downward, Colors.green),
+        const SizedBox(width: 8),
+        _buildChip('expense', '↑ Pengeluaran', Icons.arrow_upward, Colors.red),
+      ],
+    );
+  }
+
+  Widget _buildChip(String value, String label, IconData icon, Color color) {
+    final bool isSelected = selectedFilter == value;
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => onFilterChanged(value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? color.withValues(alpha: 0.15) : Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected ? color : Colors.grey.shade300,
+              width: isSelected ? 1.5 : 1,
+            ),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: isSelected ? color : Colors.grey.shade600,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              fontSize: 12,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Balance Card ───────────────────────────────────────────────────────────
 
 class _BalanceCard extends StatelessWidget {
   final int saldo;
@@ -477,21 +522,34 @@ class _BalanceCard extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          Text(
+            "Dihitung dari seluruh riwayat transaksi",
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.6),
+              fontSize: 11,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
+// ─── Summary Card ───────────────────────────────────────────────────────────
+
 class _SummaryCard extends StatelessWidget {
   final String title;
   final String value;
+  final String? subtitle;
   final IconData icon;
   final Color color;
 
   const _SummaryCard({
     required this.title,
     required this.value,
+    this.subtitle,
     required this.icon,
     required this.color,
   });
@@ -525,11 +583,24 @@ class _SummaryCard extends StatelessWidget {
               fontWeight: FontWeight.bold,
             ),
           ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              "($subtitle)",
+              style: TextStyle(
+                color: Colors.grey.shade500,
+                fontSize: 10,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 }
+
+// ─── Transaction Tile ───────────────────────────────────────────────────────
 
 class _TransactionTile extends StatelessWidget {
   final Transaction transaction;
@@ -620,6 +691,8 @@ class _TransactionTile extends StatelessWidget {
     );
   }
 }
+
+// ─── Empty State ────────────────────────────────────────────────────────────
 
 class _EmptyState extends StatelessWidget {
   final IconData icon;

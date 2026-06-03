@@ -162,44 +162,51 @@ class _MonthlyWrappedPageState extends State<MonthlyWrappedPage> {
                   child: SingleChildScrollView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        InkWell(
-                          onTap: _pickMonth,
-                          borderRadius: BorderRadius.circular(8),
-                          child: Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade100,
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 500),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            InkWell(
+                              onTap: _pickMonth,
                               borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.calendar_month, size: 20),
-                                const SizedBox(width: 10),
-                                Text(
-                                  DateFormat('MMMM yyyy').format(_month),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                              child: Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade100,
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
-                                const Spacer(),
-                                Icon(
-                                  Icons.expand_more,
-                                  color: Colors.grey.shade600,
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.calendar_month, size: 20),
+                                    const SizedBox(width: 10),
+                                    Text(
+                                      DateFormat('MMMM yyyy').format(_month),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    Icon(
+                                      Icons.expand_more,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ],
                                 ),
-                              ],
+                              ),
                             ),
-                          ),
+                            const SizedBox(height: 16),
+                            RepaintBoundary(
+                              key: _wrappedKey,
+                              child: _WrappedCard(
+                                wrapped: _wrapped!,
+                                month: _month,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 16),
-                        RepaintBoundary(
-                          key: _wrappedKey,
-                          child:
-                              _WrappedCard(wrapped: _wrapped!, month: _month),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -287,8 +294,58 @@ class _WrappedCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          _WrappedMetric(label: 'Streak', value: '${wrapped.streak} hari'),
+          const SizedBox(height: 14),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.local_fire_department,
+                      color: Colors.orange.shade300,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 6),
+                    const Text(
+                      'Streak',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${wrapped.streak} hari',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  wrapped.streak >= 7
+                      ? 'Luar biasa, pertahankan! 🔥'
+                      : wrapped.streak >= 3
+                          ? 'Keren, lanjutkan streak ini'
+                          : 'Tetap konsisten 🔥',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.6),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
           if (wrapped.insights.isNotEmpty) ...[
             const SizedBox(height: 18),
             ...wrapped.insights.map(

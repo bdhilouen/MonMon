@@ -3,7 +3,10 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://127.0.0.1:8000/api';
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'https://monmon.web.id/api',
+  );
   static String? _token;
 
   // Initialize token from SharedPreferences
@@ -158,6 +161,16 @@ class ApiService {
   static ApiResponse _handleResponse(http.Response response) {
     try {
       final body = jsonDecode(response.body);
+
+      // Handle unauthenticated (token expired/invalid)
+      if (response.statusCode == 401) {
+        clearToken(); // fire-and-forget: hapus token lokal
+        return ApiResponse(
+          success: false,
+          message: 'Sesi Anda telah berakhir, silakan login kembali.',
+          statusCode: 401,
+        );
+      }
 
       // Handle validation errors
       if (response.statusCode == 422 && body['errors'] != null) {
