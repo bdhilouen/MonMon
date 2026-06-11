@@ -24,7 +24,7 @@ class ForgotPasswordController extends Controller
 
         $user = User::where('email', $request->email)->first();
 
-        // ✅ Selalu return success untuk cegah user enumeration
+        //   Selalu return success untuk cegah user enumeration
         if (!$user) {
             return response()->json([
                 'success' => true,
@@ -77,7 +77,7 @@ class ForgotPasswordController extends Controller
             'password' => 'required|string|min:8|confirmed',
         ]);
 
-        // ✅ Verify OTP
+        //   Verify OTP
         $record = PasswordResetToken::verifyOTP($request->email, $request->otp);
 
         if (!$record) {
@@ -96,14 +96,14 @@ class ForgotPasswordController extends Controller
             ], 404);
         }
 
-        // ✅ Update password
+        //   Update password
         $user->password = Hash::make($request->password);
         $user->save();
 
-        // ✅ Force logout semua device
+        //   Force logout semua device
         $user->tokens()->delete();
 
-        // ✅ Hapus OTP setelah berhasil
+        //   Hapus OTP setelah berhasil
         $record->delete();
 
         return response()->json([

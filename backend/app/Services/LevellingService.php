@@ -2,8 +2,12 @@
 
 namespace App\Services;
 
-use App\Models\User;
 use App\Models\Notification;
+use App\Models\Transaction;
+use App\Models\User;
+use Carbon\Carbon;
+use Carbon\CarbonInterface;
+use MongoDB\BSON\ObjectId;
 
 class LevellingService
 {
@@ -74,6 +78,123 @@ class LevellingService
         }
 
         return $this->buildResult($user, $pointsToAdd, $leveledUp, $leveledUp ? $newLevel : null);
+    }
+
+    /**
+     * Recalculate daily recording streak from transaction dates.
+     */
+    public function refreshRecordingStreak(User $user, ?CarbonInterface $asOf = null): int
+    {
+        $transactionDates = Transaction::whereIn('user_id', $this->userIdCandidates($user))
+            ->orderBy('date', 'desc')
+            ->pluck('date');
+
+        $streak = $this->calculateRecordingStreak($transactionDates, $asOf);
+
+        if ((int) $user->streak !== $streak) {
+            $user->streak = $streak;
+            $user->save();
+        }
+
+        return $streak;
+    }
+
+    /**
+     * Calculate the active streak from a list of transaction dates.
+     *
+     * A streak stays active through the current day if the latest record is
+     * yesterday, then increases once the user records again today.
+     */
+    public function calculateRecordingStreak(iterable $dates, ?CarbonInterface $asOf = null): int
+    {
+        $recordedDays = [];
+
+        foreach ($dates as $date) {
+            if (empty($date)) {
+                continue;
+            }
+
+            $recordedDays[$this->toCarbon($date)->toDateString()] = true;
+        }
+
+        if (empty($recordedDays)) {
+            return 0;
+        }
+
+        $today = ($asOf ? Carbon::parse($asOf) : now())->startOfDay();
+        $cursor = $today->copy();
+
+        if (!isset($recordedDays[$cursor->toDateString()])) {
+            $yesterday = $today->copy()->subDay();
+
+            if (!isset($recordedDays[$yesterday->toDateString()])) {
+                return 0;
+            }
+
+            $cursor = $yesterday;
+        }
+
+        $streak = 0;
+        while (isset($recordedDays[$cursor->toDateString()])) {
+            $streak++;
+            $cursor->subDay();
+        }
+
+        return $streak;
+    }
+
+    private function toCarbon(mixed $date): Carbon
+    {
+        if ($date instanceof CarbonInterface) {
+            return Carbon::parse($date)->startOfDay();
+        }
+
+        return Carbon::parse($date)->startOfDay();
+    }
+
+    private function userIdCandidates(User $user): array
+    {
+        $userId = (string) $user->id;
+        $candidates = [$user->id, $userId];
+
+        if (preg_match('/^[a-f0-9]{24}$/i', $userId)) {
+            try {
+                $candidates[] = new ObjectId($userId);
+            } catch (\Throwable) {
+                // Ignore invalid ObjectId representations.
+            }
+        }
+
+        return $candidates;
+    }
+
+    /**
+     * Award daily login points without changing the recording streak.
+     */
+    public function handleDailyLogin(User $user): array
+    {
+        $now = now();
+        $lastActive = $user->last_active_date;
+        $loginAction = 'first';
+        $pointsInfo = $this->buildResult($user, 0, false, null);
+
+        if ($lastActive) {
+            $loginAction = $lastActive->copy()->startOfDay()->isSameDay($now)
+                ? 'same_day'
+                : 'new_day';
+        }
+
+        if ($loginAction !== 'same_day') {
+            $pointsInfo = $this->addPoints($user, 'daily_login');
+            $user = $user->fresh();
+        }
+
+        $user->last_active_date = $now;
+        $user->save();
+
+        return array_merge($pointsInfo, [
+            'login_action' => $loginAction,
+        ]);
     }
 
     /**

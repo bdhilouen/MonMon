@@ -8,7 +8,6 @@ import '../services/category_service.dart';
 import '../services/achievement_service.dart';
 import '../services/app_refresh_service.dart';
 import '../utils/category_icons.dart';
-import '../utils/formatter.dart';
 import '../widgets/delete_confirmation_dialog.dart';
 import '../widgets/responsive_content.dart';
 import 'login_page.dart';
@@ -26,6 +25,7 @@ class _ProfilePageState extends State<ProfilePage> {
   List<cat_model.Category> _incomeCategories = [];
   List<cat_model.Category> _expenseCategories = [];
   List<Achievement> _achievements = [];
+  final Set<String> _deletingCategoryIds = {};
 
   @override
   void initState() {
@@ -73,9 +73,13 @@ class _ProfilePageState extends State<ProfilePage> {
 
   int get _unlockedCount => _achievements.where((a) => a.isUnlocked).length;
 
-  void showMessage(String message) {
+  void showMessage(String message, {Color? backgroundColor}) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+      SnackBar(
+        content: Text(message),
+        backgroundColor: backgroundColor,
+        behavior: SnackBarBehavior.floating,
+      ),
     );
   }
 
@@ -86,69 +90,78 @@ class _ProfilePageState extends State<ProfilePage> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (sheetContext) {
-        return Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(20),
-                ),
+        return SafeArea(
+          top: false,
+          child: SizedBox(
+            height: MediaQuery.of(sheetContext).size.height * 0.78,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
               ),
-              const SizedBox(height: 14),
-              const Text(
-                'Pilih Icon',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 14),
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 4,
-                  mainAxisSpacing: 10,
-                  crossAxisSpacing: 10,
-                ),
-                itemCount: kPickableIcons.length,
-                itemBuilder: (_, index) {
-                  final key = kPickableIcons.keys.elementAt(index);
-                  final iconData = kPickableIcons[key]!;
-                  final isSelected = key == currentKey;
-
-                  return GestureDetector(
-                    onTap: () => Navigator.pop(sheetContext, key),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? Colors.blue.withValues(alpha: 0.15)
-                            : Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: isSelected
-                              ? Colors.blue
-                              : Colors.transparent,
-                          width: 2,
-                        ),
-                      ),
-                      child: Icon(
-                        iconData,
-                        color: isSelected ? Colors.blue : Colors.grey.shade700,
-                        size: 28,
-                      ),
+              child: Column(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                  );
-                },
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Pilih Icon',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 14),
+                  Expanded(
+                    child: GridView.builder(
+                      gridDelegate:
+                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent: 88,
+                            childAspectRatio: 1,
+                            mainAxisSpacing: 10,
+                            crossAxisSpacing: 10,
+                          ),
+                      itemCount: kPickableIcons.length,
+                      itemBuilder: (_, index) {
+                        final key = kPickableIcons.keys.elementAt(index);
+                        final iconData = kPickableIcons[key]!;
+                        final isSelected = key == currentKey;
+
+                        return GestureDetector(
+                          onTap: () => Navigator.pop(sheetContext, key),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 150),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? Colors.blue.withValues(alpha: 0.15)
+                                  : Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: isSelected
+                                    ? Colors.blue
+                                    : Colors.transparent,
+                                width: 2,
+                              ),
+                            ),
+                            child: Icon(
+                              iconData,
+                              color: isSelected
+                                  ? Colors.blue
+                                  : Colors.grey.shade700,
+                              size: 28,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         );
       },
@@ -444,18 +457,65 @@ class _ProfilePageState extends State<ProfilePage> {
       context,
       title: "Hapus Kategori?",
       message:
-          "Kategori \"${category.name}\" akan dihapus. Pastikan kategori ini tidak sedang dipakai transaksi.",
+          "Kategori \"${category.name}\" akan dihapus. Riwayat transaksi lama tetap aman.",
     );
     if (!confirmed || !mounted) return;
 
+    setState(() {
+      _deletingCategoryIds.add(category.id);
+    });
+    refreshSheet(() {});
+
     final result = await CategoryService.delete(category.id);
 
+    if (!mounted) return;
+
     if (result.success) {
-      await _loadData();
+      final categories = await CategoryService.getAllDetailed();
+      if (!mounted) return;
+
+      if (!categories.success) {
+        setState(() {
+          _deletingCategoryIds.remove(category.id);
+        });
+        refreshSheet(() {});
+        showMessage(
+          categories.message.isNotEmpty
+              ? categories.message
+              : "Kategori terhapus, tapi daftar gagal dimuat ulang.",
+        );
+        return;
+      }
+
+      final stillExists = [
+        ...categories.income,
+        ...categories.expense,
+      ].any((item) => item.id == category.id);
+
+      setState(() {
+        _incomeCategories = categories.income;
+        _expenseCategories = categories.expense;
+        _deletingCategoryIds.remove(category.id);
+      });
       refreshSheet(() {});
-      showMessage("Kategori berhasil dihapus");
+
+      if (stillExists) {
+        showMessage("Kategori belum terhapus. Coba refresh atau hapus lagi.");
+        return;
+      }
+
+      AppRefreshService.notifyTransactionsChanged();
+      showMessage("Kategori berhasil dihapus", backgroundColor: Colors.green);
     } else {
-      showMessage(result.message);
+      setState(() {
+        _deletingCategoryIds.remove(category.id);
+      });
+      refreshSheet(() {});
+      showMessage(
+        result.message.isNotEmpty
+            ? result.message
+            : "Kategori gagal dihapus. Coba lagi.",
+      );
     }
   }
 
@@ -532,6 +592,9 @@ class _ProfilePageState extends State<ProfilePage> {
                       itemBuilder: (context, index) {
                         final category = _allCategories[index];
                         final isDefault = !category.isCustom;
+                        final isDeleting = _deletingCategoryIds.contains(
+                          category.id,
+                        );
 
                         return Container(
                           margin: const EdgeInsets.only(bottom: 10),
@@ -588,7 +651,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ),
                               ),
                               IconButton(
-                                onPressed: isDefault
+                                onPressed: isDefault || isDeleting
                                     ? null
                                     : () {
                                         showEditCategoryDialog(
@@ -600,7 +663,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 icon: const Icon(Icons.edit_outlined),
                               ),
                               IconButton(
-                                onPressed: isDefault
+                                onPressed: isDefault || isDeleting
                                     ? null
                                     : () {
                                         deleteCategory(
@@ -609,10 +672,18 @@ class _ProfilePageState extends State<ProfilePage> {
                                           category,
                                         );
                                       },
-                                icon: const Icon(
-                                  Icons.delete_outline,
-                                  color: Colors.red,
-                                ),
+                                icon: isDeleting
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(
+                                        Icons.delete_outline,
+                                        color: Colors.red,
+                                      ),
                               ),
                             ],
                           ),
@@ -789,9 +860,7 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
             ],
           ),
-          content: const Text(
-            'Apakah kamu yakin ingin keluar dari akun?',
-          ),
+          content: const Text('Apakah kamu yakin ingin keluar dari akun?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
@@ -1038,7 +1107,11 @@ class _ProfilePageState extends State<ProfilePage> {
                       context: context,
                       applicationName: 'MonMon',
                       applicationVersion: '1.0.0',
-                      applicationIcon: const Icon(Icons.account_balance_wallet, size: 48, color: Colors.blue),
+                      applicationIcon: const Icon(
+                        Icons.account_balance_wallet,
+                        size: 48,
+                        color: Colors.blue,
+                      ),
                     );
                   },
                   borderRadius: BorderRadius.circular(18),

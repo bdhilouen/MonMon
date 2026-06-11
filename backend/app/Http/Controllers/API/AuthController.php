@@ -186,8 +186,8 @@ class AuthController extends Controller
             ], 403);
         }
 
-        // ✅ Handle streak dan poin login
-        $streakInfo = $this->levellingService->handleLoginStreak($user);
+        $loginInfo = $this->levellingService->handleDailyLogin($user);
+        $recordingStreak = $this->levellingService->refreshRecordingStreak($user->fresh());
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
@@ -197,7 +197,11 @@ class AuthController extends Controller
             'data' => [
                 'user' => $user->fresh(),
                 'token' => $token,
-                'streak_info' => $streakInfo, // ✅ Info streak untuk ditampilkan di UI
+                'streak_info' => [
+                    'streak' => $recordingStreak,
+                    'streak_type' => 'recording',
+                ],
+                'login_info' => $loginInfo,
             ],
         ]);
     }
@@ -214,9 +218,11 @@ class AuthController extends Controller
 
     public function me(Request $request)
     {
+        $this->levellingService->refreshRecordingStreak($request->user());
+
         return response()->json([
             'success' => true,
-            'data' => $request->user()
+            'data' => $request->user()->fresh()
         ]);
     }
 }

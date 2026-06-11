@@ -5,6 +5,19 @@ class CategoryService {
   // Get all categories (grouped by type)
   static Future<({List<Category> income, List<Category> expense})>
   getAll() async {
+    final result = await getAllDetailed();
+    return (income: result.income, expense: result.expense);
+  }
+
+  static Future<
+    ({
+      bool success,
+      String message,
+      List<Category> income,
+      List<Category> expense,
+    })
+  >
+  getAllDetailed() async {
     final response = await ApiService.get('/categories');
     if (response.success && response.data != null) {
       final data = response.data as Map<String, dynamic>;
@@ -20,9 +33,19 @@ class CategoryService {
               .toList() ??
           [];
 
-      return (income: incomeList, expense: expenseList);
+      return (
+        success: true,
+        message: response.message,
+        income: incomeList,
+        expense: expenseList,
+      );
     }
-    return (income: <Category>[], expense: <Category>[]);
+    return (
+      success: false,
+      message: response.message,
+      income: <Category>[],
+      expense: <Category>[],
+    );
   }
 
   // Get all categories as flat list

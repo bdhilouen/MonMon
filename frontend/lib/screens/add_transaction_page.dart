@@ -95,68 +95,78 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (sheetContext) {
-        return Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(20),
-                ),
+        return SafeArea(
+          top: false,
+          child: SizedBox(
+            height: MediaQuery.of(sheetContext).size.height * 0.78,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
               ),
-              const SizedBox(height: 14),
-              const Text(
-                'Pilih Icon',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 14),
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 4,
-                  mainAxisSpacing: 10,
-                  crossAxisSpacing: 10,
-                ),
-                itemCount: kPickableIcons.length,
-                itemBuilder: (_, index) {
-                  final key = kPickableIcons.keys.elementAt(index);
-                  final iconData = kPickableIcons[key]!;
-                  final isSelected = key == currentKey;
-
-                  return GestureDetector(
-                    onTap: () => Navigator.pop(sheetContext, key),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? Colors.blue.withValues(alpha: 0.15)
-                            : Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: isSelected ? Colors.blue : Colors.transparent,
-                          width: 2,
-                        ),
-                      ),
-                      child: Icon(
-                        iconData,
-                        color:
-                            isSelected ? Colors.blue : Colors.grey.shade700,
-                        size: 28,
-                      ),
+              child: Column(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                  );
-                },
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Pilih Icon',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 14),
+                  Expanded(
+                    child: GridView.builder(
+                      gridDelegate:
+                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent: 88,
+                            childAspectRatio: 1,
+                            mainAxisSpacing: 10,
+                            crossAxisSpacing: 10,
+                          ),
+                      itemCount: kPickableIcons.length,
+                      itemBuilder: (_, index) {
+                        final key = kPickableIcons.keys.elementAt(index);
+                        final iconData = kPickableIcons[key]!;
+                        final isSelected = key == currentKey;
+
+                        return GestureDetector(
+                          onTap: () => Navigator.pop(sheetContext, key),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 150),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? Colors.blue.withValues(alpha: 0.15)
+                                  : Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: isSelected
+                                    ? Colors.blue
+                                    : Colors.transparent,
+                                width: 2,
+                              ),
+                            ),
+                            child: Icon(
+                              iconData,
+                              color: isSelected
+                                  ? Colors.blue
+                                  : Colors.grey.shade700,
+                              size: 28,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         );
       },

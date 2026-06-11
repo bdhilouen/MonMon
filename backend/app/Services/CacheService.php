@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Cache;
 
 class CacheService
 {
-    private const KEY_VERSION = 'v2';
+    private const KEY_VERSION = 'v3';
 
     public const TTL_SHORT = 300;
 

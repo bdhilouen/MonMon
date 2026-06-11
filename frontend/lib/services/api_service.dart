@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ApiService {
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://127.0.0.1:8000/api',
+    defaultValue: 'https://monmon.web.id/api',
   );
   static String? _token;
 

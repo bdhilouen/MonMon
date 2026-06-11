@@ -24,7 +24,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // ✅ Tell Sanctum to use MongoDB model
+        //   Tell Sanctum to use MongoDB model
         Sanctum::usePersonalAccessTokenModel(PersonalAccessToken::class);
     }
 }

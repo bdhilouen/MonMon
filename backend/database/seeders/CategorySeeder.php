@@ -124,6 +124,6 @@ class CategorySeeder extends Seeder
             Category::create($category);
         }
 
-        $this->command->info('✅ Default categories created successfully!');
+        $this->command->info('  Default categories created successfully!');
     }
 }

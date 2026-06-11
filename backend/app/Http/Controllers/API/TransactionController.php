@@ -102,19 +102,20 @@ class TransactionController extends Controller
         // Update user balance & points
         $user = $request->user();
 
-        // ✅ Ganti manual points dengan LevellingService
+        //   Ganti manual points dengan LevellingService
         $action = $data['type'] === 'income'
             ? 'transaction_income'
             : 'transaction_expense';
 
         $pointsInfo = $this->levellingService->addPoints($user, $action);
+        $recordingStreak = $this->levellingService->refreshRecordingStreak($user);
 
-        // Refresh user setelah points update
+        // Refresh user setelah points dan streak update
         $user = $user->fresh();
 
         $newAchievements = $this->achievementService->checkAndUnlockAchievements($user);
 
-        // ✅ Add achievement points kalau ada yang unlock
+        //   Add achievement points kalau ada yang unlock
         if (!empty($newAchievements)) {
             foreach ($newAchievements as $achievement) {
                 $this->levellingService->addPoints($user, 'achievement_unlock');
@@ -130,7 +131,11 @@ class TransactionController extends Controller
             'success' => true,
             'message' => 'Transaction created successfully',
             'data' => $transaction,
-            'points_info' => $pointsInfo,       // ✅ Info poin
+            'points_info' => $pointsInfo,       //   Info poin
+            'streak_info' => [
+                'streak' => $recordingStreak,
+                'streak_type' => 'recording',
+            ],
             'new_achievements' => $newAchievements,
         ], 201);
     }
@@ -235,6 +240,8 @@ class TransactionController extends Controller
         }
         $user->save();
 
+        $recordingStreak = $this->levellingService->refreshRecordingStreak($user);
+
         CacheService::clearUserCache($user->id, [
             $oldMonth,
             CacheService::monthFromDate($transaction->date),
@@ -244,6 +251,10 @@ class TransactionController extends Controller
             'success' => true,
             'message' => 'Transaction updated successfully',
             'data' => $transaction,
+            'streak_info' => [
+                'streak' => $recordingStreak,
+                'streak_type' => 'recording',
+            ],
         ]);
     }
 
@@ -264,12 +275,17 @@ class TransactionController extends Controller
         $user->save();
 
         $transaction->delete();
+        $recordingStreak = $this->levellingService->refreshRecordingStreak($user);
 
         CacheService::clearUserCache($user->id, [$deletedMonth]);
 
         return response()->json([
             'success' => true,
             'message' => 'Transaction deleted successfully',
+            'streak_info' => [
+                'streak' => $recordingStreak,
+                'streak_type' => 'recording',
+            ],
         ]);
     }
 }

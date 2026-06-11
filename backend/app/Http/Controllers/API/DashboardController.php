@@ -8,6 +8,7 @@ use App\Models\MonthlyWrapped;
 use App\Models\Transaction;
 use App\Models\UserAchievement;
 use App\Services\CacheService;
+use App\Services\LevellingService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use MongoDB\BSON\ObjectId;
@@ -15,14 +16,20 @@ use MongoDB\BSON\UTCDateTime;
 
 class DashboardController extends Controller
 {
+    public function __construct(private LevellingService $levellingService)
+    {
+    }
+
     public function index(Request $request)
     {
         $user = $request->user();
+        $this->levellingService->refreshRecordingStreak($user);
+        $user = $user->fresh();
         $userId = $user->id;
         $monthKey = $request->query('month', now()->format('Y-m'));
 
-        // ✅ Definisikan di sini, sebelum masuk closure
-        if (! preg_match('/^\d{4}-\d{2}$/', $monthKey)) {
+        //   Definisikan di sini, sebelum masuk closure
+        if (!preg_match('/^\d{4}-\d{2}$/', $monthKey)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Month must use YYYY-MM format.',
@@ -42,7 +49,7 @@ class DashboardController extends Controller
                 $startUtc = new UTCDateTime($startOfMonth->timestamp * 1000);
                 $endUtc = new UTCDateTime($endOfMonth->timestamp * 1000);
 
-                // ✅ Ganti $expr dengan range date
+                //   Ganti $expr dengan range date
                 $monthlyStats = Transaction::raw(function ($collection) use ($userIdFilter, $startUtc, $endUtc) {
                     return $collection->aggregate([
                         [
@@ -86,6 +93,39 @@ class DashboardController extends Controller
                     ? round(($stats['net_income'] / $stats['total_income']) * 100, 2)
                     : 0;
 
+                // All-time stats (seluruh histori, tanpa filter tanggal)
+                $allTimeAggregation = Transaction::raw(function ($collection) use ($userIdFilter) {
+                    return $collection->aggregate([
+                        [
+                            '$match' => [
+                                'user_id' => $userIdFilter,
+                            ],
+                        ],
+                        [
+                            '$group' => [
+                                '_id' => '$type',
+                                'total' => ['$sum' => '$amount'],
+                                'count' => ['$sum' => 1],
+                            ],
+                        ],
+                    ]);
+                });
+
+                $allTimeStats = [
+                    'total_income' => 0,
+                    'total_expense' => 0,
+                ];
+
+                foreach ($allTimeAggregation as $stat) {
+                    if ($stat['_id'] == 'income') {
+                        $allTimeStats['total_income'] = $stat['total'];
+                    } else {
+                        $allTimeStats['total_expense'] = $stat['total'];
+                    }
+                }
+
+                $allTimeStats['balance'] = $allTimeStats['total_income'] - $allTimeStats['total_expense'];
+
                 $recentTransactions = Transaction::where('user_id', $userId)
                     ->orderBy('date', 'desc')
                     ->limit(10)
@@ -104,6 +144,7 @@ class DashboardController extends Controller
                     ],
                     'month' => $monthKey,
                     'monthly_stats' => $stats,
+                    'all_time_stats' => $allTimeStats,
                     'recent_transactions' => $recentTransactions,
                     'achievements_unlocked' => $achievementsCount,
                 ];
@@ -135,12 +176,12 @@ class DashboardController extends Controller
             'month' => '%Y-%m',
         ][$groupBy];
 
-        // ✅ Support both ObjectId and plain string
+        //   Support both ObjectId and plain string
         $userIdFilter = $this->buildUserIdFilter((string) $userId);
         $startUtc = new UTCDateTime($startDate->timestamp * 1000);
         $endUtc = new UTCDateTime($endDate->timestamp * 1000);
 
-        // ✅ Timeline aggregation
+        //   Timeline aggregation
         $chartData = Transaction::raw(function ($collection) use ($userIdFilter, $startUtc, $endUtc, $dateFormat) {
             return $collection->aggregate([
                 [
@@ -173,7 +214,7 @@ class DashboardController extends Controller
             $date = $item['_id']['date'];
             $type = $item['_id']['type'];
 
-            if (! isset($formattedData[$date])) {
+            if (!isset($formattedData[$date])) {
                 $formattedData[$date] = [
                     'date' => $date,
                     'income' => 0,
@@ -184,7 +225,7 @@ class DashboardController extends Controller
             $formattedData[$date][$type] = $item['total'];
         }
 
-        // ✅ Category breakdown pakai category_snapshot (no extra query)
+        //   Category breakdown pakai category_snapshot (no extra query)
         // Category breakdown
         $categoryBreakdown = Transaction::raw(function ($collection) use ($userIdFilter, $startUtc, $endUtc) {
             return $collection->aggregate([
@@ -215,21 +256,21 @@ class DashboardController extends Controller
             ]);
         });
 
-        // ✅ Collect category IDs yang snapshotnya null untuk batch query
+        //   Collect category IDs yang snapshotnya null untuk batch query
         $categoryBreakdownArr = iterator_to_array($categoryBreakdown);
         $missingSnapshotIds = array_filter(
-            array_map(fn ($item) => data_get($item, 'snapshot.name') ? null : (string) $item['_id'], $categoryBreakdownArr)
+            array_map(fn($item) => data_get($item, 'snapshot.name') ? null : (string) $item['_id'], $categoryBreakdownArr)
         );
 
-        // ✅ Batch query categories yang missing (hindari N+1)
+        //   Batch query categories yang missing (hindari N+1)
         $categoriesFromDb = $this->loadCategoriesByIds($missingSnapshotIds);
 
         $enrichedCategoryData = array_map(function ($item) use ($categoriesFromDb) {
             $snapshot = $item['snapshot'] ?? null;
             $categoryId = (string) $item['_id'];
 
-            // ✅ Fallback ke DB kalau snapshot null
-            if (! data_get($snapshot, 'name') && isset($categoriesFromDb[$categoryId])) {
+            //   Fallback ke DB kalau snapshot null
+            if (!data_get($snapshot, 'name') && isset($categoriesFromDb[$categoryId])) {
                 $snapshot = $categoriesFromDb[$categoryId];
             }
 
@@ -261,7 +302,7 @@ class DashboardController extends Controller
         $wrapped = CacheService::rememberSmart(
             CacheService::wrappedKey($userId, $monthKey),
             $cacheType,
-            fn () => $this->generateWrapped($request, $year, $month, $monthKey)
+            fn() => $this->generateWrapped($request, $year, $month, $monthKey)
         );
 
         return response()->json([
@@ -275,7 +316,7 @@ class DashboardController extends Controller
     {
         $userId = $request->user()->id;
 
-        // ✅ Fix timezone: pakai UTC eksplisit
+        //   Fix timezone: pakai UTC eksplisit
         $startDate = Carbon::create($year, $month, 1, 0, 0, 0, 'UTC')->startOfMonth();
         $endDate = Carbon::create($year, $month, 1, 0, 0, 0, 'UTC')->endOfMonth();
 
@@ -342,9 +383,9 @@ class DashboardController extends Controller
         $topCategorySnapshot = $stats['top_category'][0]['snapshot'] ?? null;
         $topCategoryName = data_get($topCategorySnapshot, 'name');
 
-        if (! $topCategoryName && isset($stats['top_category'][0]['_id'])) {
+        if (!$topCategoryName && isset($stats['top_category'][0]['_id'])) {
             $categories = $this->loadCategoriesByIds([(string) $stats['top_category'][0]['_id']]);
-            $topCategoryName = data_get($categories, (string) $stats['top_category'][0]['_id'].'.name');
+            $topCategoryName = data_get($categories, (string) $stats['top_category'][0]['_id'] . '.name');
         }
         $transactionCount = $stats['transaction_count'][0]['count'] ?? 0;
 
@@ -412,7 +453,7 @@ class DashboardController extends Controller
 
         return Category::whereIn('_id', $queryIds)
             ->get()
-            ->mapWithKeys(fn ($category) => [
+            ->mapWithKeys(fn($category) => [
                 (string) $category->_id => [
                     'name' => $category->name,
                     'icon' => $category->icon,
@@ -434,7 +475,7 @@ class DashboardController extends Controller
 
     private function isObjectIdString(string $value): bool
     {
-        if (! preg_match('/^[a-f0-9]{24}$/i', $value)) {
+        if (!preg_match('/^[a-f0-9]{24}$/i', $value)) {
             return false;
         }
 

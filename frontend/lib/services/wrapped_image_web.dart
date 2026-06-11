@@ -1,11 +1,27 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
-/// Stub implementation for Web — these features are not available.
+import 'package:web/web.dart' as web;
+
+/// Web implementation — triggers a browser file download via an anchor element.
 
 Future<String> saveWrappedImage(Uint8List bytes, String filename) async {
-  throw UnsupportedError('saveWrappedImage is not supported on Web');
+  final base64 = base64Encode(bytes);
+  final dataUrl = 'data:image/png;base64,$base64';
+
+  final anchor = web.document.createElement('a') as web.HTMLAnchorElement;
+  anchor.href = dataUrl;
+  anchor.download = filename;
+  anchor.style.display = 'none';
+
+  web.document.body!.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+
+  return filename;
 }
 
 Future<void> shareWrappedImage(Uint8List bytes, String filename) async {
-  throw UnsupportedError('shareWrappedImage is not supported on Web');
+  // Web doesn't have native share — fall back to download.
+  await saveWrappedImage(bytes, filename);
 }

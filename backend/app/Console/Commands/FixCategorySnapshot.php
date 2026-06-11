@@ -33,7 +33,7 @@ class FixCategorySnapshot extends Command
                 ];
                 $trx->save();
                 $fixed++;
-                $this->line("✅ Fixed: {$trx->id} → {$category->name}");
+                $this->line("  Fixed: {$trx->id} → {$category->name}");
             } else {
                 $notFound++;
                 $this->warn("⚠️ Category not found: {$trx->id}");

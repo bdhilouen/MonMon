@@ -38,12 +38,12 @@ class TransactionSeeder extends Seeder
                 0
             );
 
-            // ✅ Pakai Model::create() biar category_snapshot ikut tersimpan
+            //   Pakai Model::create() biar category_snapshot ikut tersimpan
             Transaction::create([
                 'type' => $type,
                 'amount' => (int) $amount,
                 'category_id' => (string) $randomCategory->_id,
-                'category_snapshot' => [  // ✅ Include snapshot
+                'category_snapshot' => [  //   Include snapshot
                     'id' => (string) $randomCategory->_id,
                     'name' => $randomCategory->name,
                     'icon' => $randomCategory->icon,

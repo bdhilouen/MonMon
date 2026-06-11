@@ -30,6 +30,7 @@ class _MonthlyWrappedPageState extends State<MonthlyWrappedPage> {
   MonthlyWrapped? _wrapped;
   bool _isLoading = true;
   bool _isExporting = false;
+  bool _hideAmounts = false;
   String? _errorMessage;
   late DateTime _month;
 
@@ -138,20 +139,20 @@ class _MonthlyWrappedPageState extends State<MonthlyWrappedPage> {
       appBar: AppBar(
         title: const Text('Monthly Wrapped'),
         actions: [
-          // Share & Download only available on native (mobile/desktop).
-          if (!kIsWeb) ...[
+          // Share only available on native (mobile/desktop).
+          if (!kIsWeb)
             IconButton(
               onPressed: _isExporting || _wrapped == null ? null : _shareImage,
               icon: const Icon(Icons.ios_share),
               tooltip: 'Share',
             ),
-            IconButton(
-              onPressed:
-                  _isExporting || _wrapped == null ? null : _downloadImage,
-              icon: const Icon(Icons.download),
-              tooltip: 'Download',
-            ),
-          ],
+          // Download available on all platforms (native + web).
+          IconButton(
+            onPressed:
+                _isExporting || _wrapped == null ? null : _downloadImage,
+            icon: const Icon(Icons.download),
+            tooltip: 'Download',
+          ),
         ],
       ),
       body: _isLoading
@@ -197,12 +198,21 @@ class _MonthlyWrappedPageState extends State<MonthlyWrappedPage> {
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 10),
+                            // Privacy toggle – outside RepaintBoundary so it
+                            // does NOT appear in shared/downloaded images.
+                            _PrivacyToggle(
+                              hidden: _hideAmounts,
+                              onChanged: (v) =>
+                                  setState(() => _hideAmounts = v),
+                            ),
+                            const SizedBox(height: 10),
                             RepaintBoundary(
                               key: _wrappedKey,
                               child: _WrappedCard(
                                 wrapped: _wrapped!,
                                 month: _month,
+                                hideAmounts: _hideAmounts,
                               ),
                             ),
                           ],
@@ -218,8 +228,13 @@ class _MonthlyWrappedPageState extends State<MonthlyWrappedPage> {
 class _WrappedCard extends StatelessWidget {
   final MonthlyWrapped wrapped;
   final DateTime month;
+  final bool hideAmounts;
 
-  const _WrappedCard({required this.wrapped, required this.month});
+  const _WrappedCard({
+    required this.wrapped,
+    required this.month,
+    this.hideAmounts = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -264,24 +279,26 @@ class _WrappedCard extends StatelessWidget {
             style: TextStyle(color: Colors.white70),
           ),
           const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: _WrappedMetric(
-                  label: 'Pemasukan',
-                  value: formatRupiah(wrapped.totalIncome),
+          if (!hideAmounts) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: _WrappedMetric(
+                    label: 'Pemasukan',
+                    value: formatRupiah(wrapped.totalIncome),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _WrappedMetric(
-                  label: 'Pengeluaran',
-                  value: formatRupiah(wrapped.totalExpense),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _WrappedMetric(
+                    label: 'Pengeluaran',
+                    value: formatRupiah(wrapped.totalExpense),
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
+              ],
+            ),
+            const SizedBox(height: 10),
+          ],
           Row(
             children: [
               Expanded(
@@ -388,6 +405,51 @@ class _WrappedCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// A toggle pill that lets the user hide or reveal nominal amounts.
+/// Placed outside [RepaintBoundary] so it never appears in exports.
+class _PrivacyToggle extends StatelessWidget {
+  final bool hidden;
+  final ValueChanged<bool> onChanged;
+
+  const _PrivacyToggle({required this.hidden, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => onChanged(!hidden),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: hidden ? Colors.blue.shade50 : Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: hidden ? Colors.blue.shade300 : Colors.grey.shade300,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              hidden ? Icons.visibility_off : Icons.visibility,
+              size: 18,
+              color: hidden ? Colors.blue.shade700 : Colors.grey.shade600,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              hidden ? 'Nominal disembunyikan' : 'Sembunyikan nominal',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: hidden ? Colors.blue.shade700 : Colors.grey.shade700,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -123,6 +123,6 @@ class AchievementSeeder extends Seeder
             Achievement::create($achievement);
         }
 
-        $this->command->info('✅ Achievements created successfully!');
+        $this->command->info('  Achievements created successfully!');
     }
 }

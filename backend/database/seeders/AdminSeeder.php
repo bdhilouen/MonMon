@@ -21,6 +21,6 @@ class AdminSeeder extends Seeder
             'last_active_date' => now(),
         ]);
 
-        $this->command->info('✅ Admin user created: admin@monmon.app / password123');
+        $this->command->info('  Admin user created: admin@monmon.app / password123');
     }
 }

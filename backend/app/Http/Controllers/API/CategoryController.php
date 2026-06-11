@@ -104,17 +104,11 @@ class CategoryController extends Controller
             ->where('user_id', $request->user()->id)
             ->firstOrFail();
 
-        // Check if category is used in transactions
+        // Existing transactions keep category_snapshot, so deleting a custom
+        // category should not erase or corrupt transaction history.
         $transactionCount = Transaction::where('user_id', $request->user()->id)
             ->where('category_id', $id)
             ->count();
-
-        if ($transactionCount > 0) {
-            return response()->json([
-                'success' => false,
-                'message' => "Cannot delete category. It's used in {$transactionCount} transactions.",
-            ], 422);
-        }
 
         $category->delete();
 
@@ -123,6 +117,10 @@ class CategoryController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Category deleted successfully',
+            'data' => [
+                'deleted_id' => (string) $id,
+                'affected_transactions' => $transactionCount,
+            ],
         ]);
     }
 }
